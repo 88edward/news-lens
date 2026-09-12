@@ -1,0 +1,115 @@
+{% set root = '' %}
+{% extends "base.html" %}
+
+{% block title %}news-lens — 오늘의 세계{% endblock %}
+
+{% block body_class %}globe-page{% endblock %}
+
+{% block content %}
+<div class="globe-layout">
+
+  <section class="globe-stage" aria-label="세계 지도">
+    <!-- WebGL 이 되면 여기에 글로브가 그려진다. 안 되면 숨기고 아래 목록만 남는다. -->
+    <div id="globe" role="img" aria-label="국가별 관심도를 표시한 3D 지구본"></div>
+
+    <div id="globe-skeleton" class="skeleton" aria-hidden="true">
+      <div class="skeleton-orb"></div>
+      <p>지구본을 그리는 중…</p>
+    </div>
+
+    <noscript>
+      <p class="notice">자바스크립트가 꺼져 있다. 아래 국가 목록으로 이동해라.</p>
+    </noscript>
+
+    <p id="globe-fallback-note" class="notice" hidden>
+      이 브라우저에서 3D 지구본을 띄우지 못했다. 아래 국가 목록은 그대로 쓸 수 있다.
+    </p>
+
+    <div class="globe-legend" aria-hidden="true">
+      <span><i class="dot tone-negative"></i> 부정</span>
+      <span><i class="dot tone-neutral"></i> 중립</span>
+      <span><i class="dot tone-positive"></i> 긍정</span>
+      <span><i class="ring"></i> 급등</span>
+    </div>
+  </section>
+
+  <!-- 글로브가 떠도 이 목록은 남는다. 폰에서는 이쪽이 주인공이다. -->
+  <section class="country-list" aria-labelledby="list-heading">
+    <h1 id="list-heading">
+      오늘의 세계
+      <span class="muted">{{ globe.date }}</span>
+    </h1>
+    <p class="lede">
+      최근 경제·정치 뉴스에서 많이 언급된 순서다. 급등 표시가 붙은 나라는
+      평소보다 보도량이 갑자기 늘어난 곳이다.
+    </p>
+
+    <table class="countries">
+      <caption class="sr-only">국가별 관심도와 오늘의 대표 사건</caption>
+      <thead>
+        <tr>
+          <th scope="col">국가</th>
+          <th scope="col" class="num">사건</th>
+          <th scope="col" class="num">기사</th>
+          <th scope="col">오늘의 대표 사건</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in globe.countries %}
+        <tr data-iso2="{{ c.iso2 }}">
+          <th scope="row">
+            <a href="country/{{ c.iso2 }}/">{{ c.name_ko }}</a>
+            {% if c.surge > site.globe.ring_surge_threshold %}
+            <span class="badge surge" title="평소의 {{ c.surge }}배">급등</span>
+            {% endif %}
+          </th>
+          <td class="num">{{ c.event_count }}</td>
+          <td class="num">{{ c.article_count }}</td>
+          <td>
+            {% if c.top_event %}
+            <a href="event/{{ c.top_event.id }}/">{{ c.top_event.headline }}</a>
+            <span class="muted">· 매체 {{ c.top_event.source_count }}곳</span>
+            {% else %}
+            <span class="muted">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="muted">오늘 분석된 사건이 없다.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<!-- 마커 클릭 시 열리는 패널. 포커스 트랩과 Esc 닫기는 globe.js 가 건다. -->
+<aside id="panel" class="panel" role="dialog" aria-modal="false"
+       aria-labelledby="panel-title" hidden>
+  <div class="panel-head">
+    <h2 id="panel-title">국가</h2>
+    <button type="button" id="panel-close" class="panel-close" aria-label="패널 닫기">✕</button>
+  </div>
+  <div id="panel-body" class="panel-body" tabindex="-1"></div>
+  <div class="panel-foot">
+    <a id="panel-more" href="#">이 나라 전체 보기 →</a>
+  </div>
+</aside>
+{% endblock %}
+
+{% block scripts %}
+<!-- globe.gl 번들에 three.js 가 포함돼 있다. three 를 따로 부르지 마라 —
+     r160 부터 UMD 빌드가 없어져 404 가 나고, 전역 THREE 도 안 생긴다. -->
+<script src="https://cdn.jsdelivr.net/npm/globe.gl@2.33.0/dist/globe.gl.min.js"></script>
+<script src="static/globe.js" defer></script>
+<script>
+  window.NEWS_LENS = {
+    dataUrl: 'data/globe.json',
+    countryUrl: function (iso2) { return 'data/country/' + iso2 + '.json'; },
+    countryPage: function (iso2) { return 'country/' + iso2 + '/'; },
+    eventPage: function (id) { return 'event/' + id + '/'; },
+    ringSurgeThreshold: {{ site.globe.ring_surge_threshold }},
+    maxRings: {{ site.globe.max_rings }},
+    maxLabels: {{ site.globe.max_labels }}
+  };
+</script>
+{% endblock %}

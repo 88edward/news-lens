@@ -1,0 +1,43 @@
+{% set root = '../../' %}
+{% extends "base.html" %}
+
+{% block title %}{{ country.name_ko }} — news-lens{% endblock %}
+{% block description %}{{ country.name_ko }}의 {{ country.date }} 사건 목록. 요약과 출처 링크.{% endblock %}
+
+{% block content %}
+<article class="page">
+  <nav class="crumbs" aria-label="위치">
+    <a href="{{ root }}">글로브</a> <span aria-hidden="true">›</span> {{ country.name_ko }}
+  </nav>
+
+  <h1>{{ country.name_ko }} <span class="muted">{{ country.date }}</span></h1>
+  <p class="lede">사건 {{ country.events|length }}건. 각 사건은 여러 매체의 보도를 묶은 것이다.</p>
+
+  {% for e in country.events %}
+  <section class="event-card">
+    <h2>
+      <a href="{{ root }}event/{{ e.id }}/">{{ e.headline }}</a>
+    </h2>
+    <p class="meta">
+      <span class="badge {{ e.tone|tone_class }}">{{ e.tone|tone_label }}</span>
+      {% if e.category %}<span class="badge">{{ e.category }}</span>{% endif %}
+      <span class="muted">매체 {{ e.source_count }}곳</span>
+    </p>
+    {% if e.summary %}<p class="summary">{{ e.summary }}</p>{% endif %}
+    <details>
+      <summary>출처 {{ e.sources|length }}건</summary>
+      <ul class="sources">
+        {% for s in e.sources %}
+        <li>
+          <a href="{{ s.url }}" rel="noopener nofollow external" target="_blank">{{ s.title }}</a>
+          <span class="muted">{{ s.domain }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </details>
+  </section>
+  {% else %}
+  <p class="muted">이 날짜에 분석된 사건이 없다.</p>
+  {% endfor %}
+</article>
+{% endblock %}

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% block title %}news-lens{% endblock %}</title>
+<meta name="description" content="{% block description %}전 세계 뉴스를 국가별 관심도로 모아 사건 단위로 정리한다.{% endblock %}">
+<link rel="stylesheet" href="{{ root }}static/globe.css">
+{% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+<a class="skip-link" href="#main">본문으로 건너뛰기</a>
+
+<header class="site-header">
+  <a class="brand" href="{{ root }}">
+    <span class="brand-mark" aria-hidden="true"></span>
+    news&#8209;lens
+  </a>
+  <nav aria-label="주요">
+    <a href="{{ root }}">글로브</a>
+    {% if briefing_date %}<a href="{{ root }}briefing/{{ briefing_date }}/">오늘의 브리핑</a>{% endif %}
+  </nav>
+</header>
+
+<main id="main">
+{% block content %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+  <p>
+    기사 원문은 싣지 않는다. 요약과 출처 링크만 제공한다.
+    각 항목의 링크를 눌러 원 매체에서 읽어라.
+  </p>
+  <p class="muted">
+    수집 GDELT 2.0 · RSS · 사건 단위 LLM 분석
+    {% if globe %}· 생성 {{ globe.generated_at }}{% endif %}
+  </p>
+</footer>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,49 @@
+{% set root = '../../' %}
+{% extends "base.html" %}
+
+{% block title %}{{ date }} 브리핑 — news-lens{% endblock %}
+{% block description %}{{ briefing['헤드라인'] }}{% endblock %}
+
+{% block content %}
+<article class="page briefing">
+  <nav class="crumbs" aria-label="위치">
+    <a href="{{ root }}">글로브</a> <span aria-hidden="true">›</span> 브리핑
+  </nav>
+
+  <p class="muted">{{ date }}</p>
+  <h1>{{ briefing['헤드라인'] }}</h1>
+
+  <h2>오늘의 3대 흐름</h2>
+  {% for t in briefing['오늘의_3대_흐름'] %}
+  <section class="trend">
+    <h3>{{ t['제목'] }}</h3>
+    <p>{{ t['설명'] }}</p>
+    {% if t['관련사건'] %}
+    <p class="muted">
+      관련 사건:
+      {% for eid in t['관련사건'] %}
+      <a href="{{ root }}event/{{ eid }}/">{{ eid }}</a>{% if not loop.last %}, {% endif %}
+      {% endfor %}
+    </p>
+    {% endif %}
+  </section>
+  {% endfor %}
+
+  <h2>지역별</h2>
+  <dl class="regions">
+    {% for r in briefing['지역별_요약'] %}
+    <dt>{{ r['지역'] }}</dt><dd>{{ r['요약'] }}</dd>
+    {% endfor %}
+  </dl>
+
+  {% if briefing['주목할_신호'] %}
+  <h2>주목할 신호</h2>
+  <p class="lede">아직 크게 다뤄지지 않았지만 지켜볼 만한 것들이다.</p>
+  <dl class="signals">
+    {% for s in briefing['주목할_신호'] %}
+    <dt>{{ s['신호'] }}</dt><dd>{{ s['근거'] }}</dd>
+    {% endfor %}
+  </dl>
+  {% endif %}
+</article>
+{% endblock %}

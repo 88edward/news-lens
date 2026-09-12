@@ -1,0 +1,75 @@
+{% set root = '../../' %}
+{% extends "base.html" %}
+
+{% block title %}{{ event.headline }} — news-lens{% endblock %}
+{% block description %}{{ event.headline }}{% endblock %}
+
+{% block content %}
+<article class="page event-detail">
+  <nav class="crumbs" aria-label="위치">
+    <a href="{{ root }}">글로브</a> <span aria-hidden="true">›</span>
+    <a href="{{ root }}country/{{ event.country.iso2 }}/">{{ event.country.name_ko }}</a>
+    <span aria-hidden="true">›</span> 사건
+  </nav>
+
+  <h1>{{ event.headline }}</h1>
+  <p class="meta">
+    <span class="badge {{ event.tone|tone_class }}">{{ event.tone|tone_label }} ({{ event.tone }})</span>
+    {% if event.category %}<span class="badge">{{ event.category }}</span>{% endif %}
+    <span class="muted">매체 {{ event.source_count }}곳</span>
+    {% if event.confidence is not none %}
+    <span class="muted">· 신뢰도 {{ '%.0f'|format(event.confidence * 100) }}%</span>
+    {% endif %}
+    <span class="muted">· {{ event.date }}</span>
+  </p>
+
+  {% set a = event.analysis %}
+
+  {% if a['핵심사실'] %}
+  <h2>핵심 사실</h2>
+  <ul class="facts">
+    {% for fact in a['핵심사실'] %}<li>{{ fact }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if a['배경'] %}
+  <h2>배경</h2>
+  <p>{{ a['배경'] }}</p>
+  {% endif %}
+
+  {% if a['영향분석'] %}
+  <h2>영향</h2>
+  <p>{{ a['영향분석'] }}</p>
+  {% endif %}
+
+  {% if a['이해관계자'] %}
+  <h2>이해관계자</h2>
+  <dl class="stakeholders">
+    {% for s in a['이해관계자'] %}
+    <dt>{{ s['이름'] }}</dt><dd>{{ s['입장'] }}</dd>
+    {% endfor %}
+  </dl>
+  {% endif %}
+
+  {% if a['출처간_불일치'] %}
+  <h2>출처 간 불일치</h2>
+  <p class="lede">매체별로 사실이 엇갈리는 지점이다. 원문을 직접 비교해 보는 편이 좋다.</p>
+  <dl class="conflicts">
+    {% for c in a['출처간_불일치'] %}
+    <dt>{{ c['쟁점'] }}</dt><dd>{{ c['설명'] }}</dd>
+    {% endfor %}
+  </dl>
+  {% endif %}
+
+  <h2>출처 {{ event.sources|length }}건</h2>
+  <p class="lede">원문은 싣지 않는다. 아래 링크로 각 매체에서 읽어라.</p>
+  <ul class="sources">
+    {% for s in event.sources %}
+    <li>
+      <a href="{{ s.url }}" rel="noopener nofollow external" target="_blank">{{ s.title }}</a>
+      <span class="muted">{{ s.domain }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</article>
+{% endblock %}

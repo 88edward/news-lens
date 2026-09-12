@@ -1,0 +1,318 @@
+/* news-lens — 어둡고 차분하게. 글로브가 주인공이되 목록 없이는 못 산다. */
+
+:root {
+  --bg: #070b14;
+  --bg-raise: #0d1524;
+  --bg-panel: #101a2c;
+  --line: #1e2b42;
+  --text: #e4ecf8;
+  --text-dim: #93a3bd;
+  --accent: #56a8ff;
+  --warm: #ff7a30;
+  --focus: #7cc4ff;
+  --radius: 10px;
+  --max: 1180px;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+/* display:grid/flex 는 [hidden] 의 UA 기본값(display:none)을 이긴다.
+   el.hidden = true 로 숨기는 요소가 여럿이므로 전역으로 못박는다. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans KR",
+        "Malgun Gothic", Roboto, sans-serif;
+  /* 400px 폭에서 가로 스크롤이 생기면 안 된다. */
+  overflow-x: hidden;
+}
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { color: #8cc6ff; }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+.skip-link {
+  position: absolute; left: -9999px; top: 0;
+  background: var(--bg-panel); padding: 10px 16px; z-index: 100;
+}
+.skip-link:focus { left: 8px; top: 8px; }
+
+.muted { color: var(--text-dim); font-weight: 400; }
+.lede { color: var(--text-dim); margin-top: 0; }
+
+.notice {
+  background: var(--bg-raise);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warm);
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 0.92rem;
+}
+
+/* ── 헤더 / 푸터 ───────────────────────────────────────────────────── */
+
+.site-header {
+  display: flex; align-items: center; gap: 20px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  position: relative; z-index: 20;
+}
+.brand {
+  font-weight: 700; letter-spacing: -0.02em; color: var(--text);
+  text-decoration: none; display: inline-flex; align-items: center; gap: 9px;
+}
+.brand-mark {
+  width: 13px; height: 13px; border-radius: 50%;
+  background: radial-gradient(circle at 32% 30%, #7cc4ff, #1a4c80 70%, #0a1a2e);
+  box-shadow: 0 0 12px rgba(86, 168, 255, 0.55);
+}
+.site-header nav { display: flex; gap: 16px; font-size: 0.93rem; }
+
+.site-footer {
+  border-top: 1px solid var(--line);
+  padding: 22px 20px 40px;
+  color: var(--text-dim);
+  font-size: 0.87rem;
+  max-width: var(--max);
+  margin: 0 auto;
+}
+.site-footer p { margin: 4px 0; }
+
+/* ── 글로브 레이아웃 ───────────────────────────────────────────────── */
+
+.globe-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 0;
+  align-items: start;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+
+/* 스테이지는 그리드 행 높이를 따라가면 안 된다 — 목록이 길면 캔버스가
+   수천 픽셀로 늘어나 지구본이 화면 밖으로 밀려난다.
+   뷰포트 높이로 고정하고 sticky 로 붙여, 목록을 스크롤해도 남아 있게 한다. */
+.globe-stage {
+  position: sticky;
+  top: 0;
+  height: calc(100vh - 52px);
+  max-height: 860px;
+  background:
+    radial-gradient(ellipse at 50% 45%, rgba(28, 62, 105, 0.35), transparent 62%),
+    var(--bg);
+  overflow: hidden;
+}
+#globe { width: 100%; height: 100%; position: absolute; inset: 0; }
+
+.skeleton {
+  position: absolute; inset: 0;
+  display: grid; place-content: center; gap: 18px; justify-items: center;
+  color: var(--text-dim);
+}
+.skeleton-orb {
+  width: 190px; height: 190px; border-radius: 50%;
+  background: linear-gradient(120deg, #101c2e 30%, #1b3350 50%, #101c2e 70%);
+  background-size: 300% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+@keyframes shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+.globe-stage .notice { position: absolute; left: 16px; right: 16px; top: 16px; }
+
+.globe-legend {
+  position: absolute; left: 16px; bottom: 14px;
+  display: flex; gap: 14px; flex-wrap: wrap;
+  font-size: 0.78rem; color: var(--text-dim);
+  background: rgba(7, 11, 20, 0.72);
+  padding: 7px 12px; border-radius: 999px; border: 1px solid var(--line);
+}
+.globe-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.dot.tone-negative { background: #ff7a30; }
+.dot.tone-neutral { background: #56a8ff; }
+.dot.tone-positive { background: #5fd0a0; }
+.ring {
+  width: 11px; height: 11px; border-radius: 50%;
+  border: 1.5px solid #ff9640; display: inline-block;
+}
+
+/* ── 국가 목록 ─────────────────────────────────────────────────────── */
+
+.country-list {
+  padding: 26px 22px 40px;
+  border-left: 1px solid var(--line);
+  min-width: 0;
+  overflow-x: auto;
+}
+.country-list h1 { font-size: 1.5rem; margin: 0 0 6px; letter-spacing: -0.02em; }
+.country-list h1 .muted { font-size: 0.95rem; margin-left: 8px; }
+
+table.countries { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+table.countries caption { text-align: left; }
+table.countries th, table.countries td {
+  text-align: left; padding: 9px 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+table.countries thead th {
+  font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-dim); font-weight: 600; border-bottom-color: #24334c;
+}
+table.countries .num { text-align: right; font-variant-numeric: tabular-nums; width: 3.6rem; }
+table.countries tbody tr { cursor: pointer; }
+table.countries tbody tr:hover { background: rgba(86, 168, 255, 0.06); }
+table.countries th[scope="row"] { font-weight: 600; white-space: nowrap; }
+
+.badge {
+  display: inline-block; font-size: 0.72rem; line-height: 1.5;
+  padding: 1px 7px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--bg-raise);
+  color: var(--text-dim); margin-right: 5px;
+}
+.badge.surge { border-color: #6b3c1c; background: #2a1a10; color: #ffb27a; }
+.tone-verynegative { border-color: #7a2a1c; background: #2c1512; color: #ff9b7a; }
+.tone-negative { border-color: #6b3c1c; background: #261a12; color: #ffb27a; }
+.tone-neutral { border-color: #1f3c5e; background: #0f1d2e; color: #8fc0f5; }
+.tone-positive { border-color: #1f5a44; background: #0e2219; color: #7fdcb4; }
+
+/* ── 패널 ──────────────────────────────────────────────────────────── */
+
+.panel {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: min(430px, 92vw);
+  background: var(--bg-panel);
+  border-left: 1px solid var(--line);
+  box-shadow: -18px 0 48px rgba(0, 0, 0, 0.5);
+  display: flex; flex-direction: column;
+  z-index: 50;
+  animation: slide-in 0.18s ease-out;
+}
+@keyframes slide-in { from { transform: translateX(16px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .panel { animation: none; }
+  .skeleton-orb { animation: none; }
+}
+
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 18px; border-bottom: 1px solid var(--line);
+}
+.panel-head h2 { margin: 0; font-size: 1.15rem; }
+.panel-close {
+  background: none; border: 1px solid var(--line); color: var(--text-dim);
+  border-radius: 8px; width: 32px; height: 32px; cursor: pointer; font-size: 0.9rem;
+}
+.panel-close:hover { color: var(--text); border-color: #2f4463; }
+.panel-body { overflow-y: auto; padding: 8px 18px 18px; flex: 1; }
+.panel-body:focus { outline: none; }
+.panel-foot { padding: 14px 18px; border-top: 1px solid var(--line); }
+
+.panel-event { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.panel-event h3 { margin: 0 0 6px; font-size: 0.98rem; line-height: 1.45; }
+.panel-event .meta { margin: 0 0 6px; font-size: 0.8rem; }
+.panel-event .summary { margin: 0; color: var(--text-dim); font-size: 0.88rem; }
+
+/* ── 본문 페이지 ───────────────────────────────────────────────────── */
+
+.page { max-width: 760px; margin: 0 auto; padding: 26px 22px 48px; }
+.page h1 { font-size: 1.7rem; line-height: 1.3; letter-spacing: -0.02em; margin: 6px 0 10px; }
+.page h2 { font-size: 1.1rem; margin: 30px 0 8px; letter-spacing: -0.01em; }
+.page h3 { font-size: 1rem; margin: 18px 0 6px; }
+
+.crumbs { font-size: 0.85rem; color: var(--text-dim); }
+.crumbs a { color: var(--text-dim); }
+
+.meta { font-size: 0.85rem; }
+
+.event-card {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+.event-card h2 { margin: 0 0 6px; font-size: 1.05rem; }
+.event-card .summary { color: var(--text-dim); margin: 6px 0 10px; }
+
+details summary { cursor: pointer; color: var(--text-dim); font-size: 0.86rem; }
+details[open] summary { margin-bottom: 8px; }
+
+ul.sources, ul.facts { padding-left: 20px; margin: 8px 0; }
+ul.sources li { margin: 6px 0; font-size: 0.92rem; overflow-wrap: anywhere; }
+ul.facts li { margin: 5px 0; }
+
+dl.stakeholders, dl.conflicts, dl.regions, dl.signals { margin: 8px 0; }
+dl dt { font-weight: 600; margin-top: 12px; }
+dl dd { margin: 2px 0 0 0; color: var(--text-dim); }
+
+.trend { padding: 4px 0 10px; border-bottom: 1px solid var(--line); }
+
+/* ── 반응형 ────────────────────────────────────────────────────────── */
+
+@media (max-width: 960px) {
+  .globe-layout { grid-template-columns: 1fr; }
+  .country-list { border-left: 0; border-top: 1px solid var(--line); }
+  .globe-stage { height: 52vh; position: relative; }
+}
+
+/* 폰에서 지구본을 돌려 나라를 찾는 사람은 없다.
+   글로브는 상단 고정 높이로 줄이고 목록을 주인공으로 만든다. */
+@media (max-width: 640px) {
+  .globe-stage { height: 40vh; position: sticky; top: 0; z-index: 5; }
+  .globe-legend { font-size: 0.7rem; gap: 9px; left: 10px; bottom: 8px; padding: 5px 9px; }
+  .country-list { padding: 18px 14px 34px; }
+  .country-list h1 { font-size: 1.3rem; }
+  table.countries { font-size: 0.86rem; }
+  /* 좁은 화면에서는 기사 수 열을 접는다 — 가로 스크롤이 생기면 안 된다. */
+  table.countries th:nth-child(3), table.countries td:nth-child(3) { display: none; }
+  .panel { width: 100vw; }
+  .site-header { padding: 12px 14px; gap: 12px; }
+  .page { padding: 20px 14px 40px; }
+  .page h1 { font-size: 1.35rem; }
+}
+
+/* 글로브가 없는 상태에서는 목록이 전체 폭을 쓴다. */
+body.no-globe .globe-layout { grid-template-columns: 1fr; }
+body.no-globe .globe-stage { height: auto; max-height: none; position: static; padding: 16px; }
+body.no-globe .globe-legend { display: none; }
+body.no-globe .country-list { border-left: 0; }
+
+body.panel-open { overflow: hidden; }
+
+/* 글로브 위에 얹는 DOM 라벨.
+   three-globe 의 TextGeometry 라벨은 helvetiker 폰트를 써서 한글이 안 나온다.
+   DOM 으로 그리면 브라우저 폰트를 그대로 쓸 수 있다. */
+.globe-label {
+  color: rgba(226, 238, 255, 0.86);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.8);
+  cursor: pointer;
+  user-select: none;
+  transform: translate(-50%, -140%);
+  transition: color 0.12s ease;
+}
+.globe-label:hover { color: #fff; }
+@media (max-width: 640px) {
+  /* 좁은 화면에서 라벨이 겹치면 글로브가 지저분해진다. */
+  .globe-label { font-size: 0.64rem; }
+}

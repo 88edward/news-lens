@@ -1,0 +1,13 @@
+name = "news-lens-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+# D1 무료 한도: 읽기 500만 행/일, 쓰기 10만 행/일, 저장 5GB.
+# Worker 는 읽기만 한다. 파이프라인이 쓰는 쪽이다.
+[[d1_databases]]
+binding = "DB"
+database_name = "news-lens"
+database_id = "REPLACE_WITH_YOUR_D1_ID"
+
+[observability]
+enabled = true
