@@ -245,6 +245,25 @@ class Database:
             row,
         )
 
+    def next_event_index(self, date: str) -> int:
+        """그날 이미 쓴 사건 번호 다음. 재실행이 기존 사건을 덮어쓰지 않게 한다."""
+        row = self.one("SELECT COUNT(*) AS n FROM events WHERE date = ?", (date,))
+        return int(row["n"] or 0) + 1
+
+    def reset_clustering(self, date: str) -> int:
+        """그날 사건을 전부 지우고 기사를 embedded 로 되돌린다 (--recluster)."""
+        ids = [r["id"] for r in self.query("SELECT id FROM events WHERE date = ?", (date,))]
+        if ids:
+            marks = ",".join("?" * len(ids))
+            self.execute(
+                f"UPDATE articles SET event_id = NULL, status = 'embedded' "
+                f"WHERE event_id IN ({marks})",
+                ids,
+            )
+            self.execute(f"DELETE FROM events WHERE id IN ({marks})", ids)
+            self.commit()
+        return len(ids)
+
     def assign_event(self, article_id: str, event_id: str) -> None:
         self.execute(
             "UPDATE articles SET event_id = ?, status = 'clustered' WHERE id = ?",

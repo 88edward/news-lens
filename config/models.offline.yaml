@@ -1,0 +1,40 @@
+# config/models.offline.yaml
+#
+# 키 없이 전체 파이프라인을 돌릴 때 쓰는 설정. 모든 역할이 fake provider 다.
+#
+#   NEWS_LENS_CONFIG_DIR 로는 디렉토리 전체를 바꾸므로, 이 파일만 쓰려면
+#   config/models.yaml 자리에 복사해 넣어라. 자세한 건 README 의
+#   "fixtures 로 전체 돌리기" 를 봐라.
+
+defaults:
+  batch_discount: 0.5
+
+roles:
+  embedding:
+    provider: fake
+    model: fake-embedding-512
+    mode: sync
+    dimensions: 512
+    max_output_tokens: 0
+    price_per_mtok_in: 0.02
+    price_per_mtok_out: 0.0
+
+  event_analysis:
+    provider: fake
+    model: fake-event-analyst
+    mode: batch
+    max_output_tokens: 2000
+    prompt: prompts/01_event_analysis.md
+    schema: prompts/_shared/event_schema.json
+    price_per_mtok_in: 1.0
+    price_per_mtok_out: 5.0
+
+  daily_synthesis:
+    provider: fake
+    model: fake-synthesizer
+    mode: batch
+    max_output_tokens: 8000
+    prompt: prompts/02_daily_synthesis.md
+    schema: prompts/_shared/briefing_schema.json
+    price_per_mtok_in: 2.0
+    price_per_mtok_out: 10.0
