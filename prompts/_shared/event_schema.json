@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "event_analysis",
+  "description": "사건 1개에 대한 분석 결과. step6이 이 스키마로 검증한다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "한줄요약",
+    "핵심사실",
+    "배경",
+    "이해관계자",
+    "영향분석",
+    "출처간_불일치",
+    "카테고리",
+    "신뢰도",
+    "논조점수"
+  ],
+  "properties": {
+    "한줄요약": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 120,
+      "description": "사건을 한 문장으로. 글로브 패널과 목록에 그대로 쓰인다."
+    },
+    "핵심사실": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 6,
+      "items": { "type": "string", "minLength": 5 },
+      "description": "여러 출처가 공통으로 보도한 사실만."
+    },
+    "배경": {
+      "type": "string",
+      "minLength": 20,
+      "description": "이 사건이 왜 지금 일어났는지. 2~4문장."
+    },
+    "이해관계자": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["이름", "입장"],
+        "properties": {
+          "이름": { "type": "string" },
+          "입장": { "type": "string" }
+        }
+      }
+    },
+    "영향분석": {
+      "type": "string",
+      "minLength": 20,
+      "description": "누구에게 어떤 영향이 가는지. 추측은 추측이라고 밝힌다."
+    },
+    "출처간_불일치": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["쟁점", "설명"],
+        "properties": {
+          "쟁점": { "type": "string" },
+          "설명": { "type": "string" }
+        }
+      },
+      "description": "매체별로 사실이 엇갈리는 지점. 없으면 빈 배열."
+    },
+    "카테고리": {
+      "type": "string",
+      "enum": [
+        "economy",
+        "markets",
+        "politics",
+        "conflict",
+        "technology",
+        "society",
+        "environment",
+        "other"
+      ]
+    },
+    "신뢰도": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "출처 수와 일치도에 근거한 확신도."
+    },
+    "논조점수": {
+      "type": "number",
+      "minimum": -10,
+      "maximum": 10,
+      "description": "글로브 마커 색에 직접 쓰인다. 반드시 숫자여야 한다. -10 극히 부정 / 0 중립 / +10 극히 긍정."
+    }
+  }
+}
