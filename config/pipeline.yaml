@@ -1,0 +1,46 @@
+# config/pipeline.yaml — 임계값·상한·보관 기간. 코드에 숫자를 박지 않기 위한 파일.
+
+cost:
+  max_daily_cost_usd: 1.20       # 월 $36 상한. 넘으면 코드가 중단시킨다.
+  warn_at_fraction: 0.7          # 70% 넘으면 stderr 경고
+
+filter:
+  languages: [en]                # 룰 필터가 통과시킬 언어
+  min_title_chars: 20
+  min_lead_chars: 80
+  domain_blocklist:
+    - example-spam.com
+  domain_allowlist: []           # 비어 있으면 블록리스트만 적용
+
+embed:
+  dimensions: 512
+  quantize: int8
+  batch_size: 128
+  text_fields: [title, lead]     # 본문 전체를 넣지 않는다
+
+cluster:
+  min_cluster_size: 2
+  min_samples: 1
+  cluster_selection_epsilon: 0.12
+  similarity_threshold: 0.82     # 코사인 유사도 하한
+  max_representatives: 3         # 사건당 대표 기사 수
+  representative_one_per_domain: true
+
+batch:
+  poll_exit_code_pending: 75     # step6이 PENDING일 때 쓰는 exit code
+  max_wait_hours: 24             # Batch API 보장 상한
+  max_requests_per_batch: 1000
+
+retention:
+  raw_blob_days: 90
+  static_build_days: 30          # 그보다 오래된 것은 Worker가 처리한다
+  weights_history_days: 365
+
+site:
+  base_url: "https://news-lens.pages.dev"
+  timezone: "Asia/Seoul"
+  globe:
+    ring_surge_threshold: 1.8
+    max_rings: 3
+    max_labels: 12
+    top_countries: 25

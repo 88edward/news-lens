@@ -1,0 +1,72 @@
+# config/countries.yaml
+#
+# ★ FIPS vs ISO 함정 ★
+# GDELT의 sourcecountry 필터는 ISO 3166-1 이 아니라 FIPS 10-4 코드를 쓴다.
+#   한국  ISO=KR / FIPS=KS
+#   중국  ISO=CN / FIPS=CH   (ISO에서 CH는 스위스다)
+#   일본  ISO=JP / FIPS=JA
+#   독일  ISO=DE / FIPS=GM
+#   영국  ISO=GB / FIPS=UK
+#   호주  ISO=AU / FIPS=AS   (FIPS에서 AU는 오스트리아다)
+# 이 매핑을 경유하지 않으면 조용히 엉뚱한 나라 기사를 모은다.
+#
+# lat/lng 는 글로브 마커용 국가 중심 좌표다.
+
+- { iso2: "US", fips: "US", name_ko: 미국,          lat:  39.8, lng:  -98.6 }
+- { iso2: "CN", fips: "CH", name_ko: 중국,          lat:  35.9, lng:  104.2 }
+- { iso2: "JP", fips: "JA", name_ko: 일본,          lat:  36.2, lng:  138.3 }
+- { iso2: "KR", fips: "KS", name_ko: 한국,          lat:  36.5, lng:  127.8 }
+- { iso2: "KP", fips: "KN", name_ko: 북한,          lat:  40.3, lng:  127.5 }
+- { iso2: "DE", fips: "GM", name_ko: 독일,          lat:  51.2, lng:   10.5 }
+- { iso2: "GB", fips: "UK", name_ko: 영국,          lat:  55.4, lng:   -3.4 }
+- { iso2: "FR", fips: "FR", name_ko: 프랑스,        lat:  46.2, lng:    2.2 }
+- { iso2: "IT", fips: "IT", name_ko: 이탈리아,      lat:  41.9, lng:   12.6 }
+- { iso2: "ES", fips: "SP", name_ko: 스페인,        lat:  40.5, lng:   -3.7 }
+- { iso2: "NL", fips: "NL", name_ko: 네덜란드,      lat:  52.1, lng:    5.3 }
+- { iso2: "BE", fips: "BE", name_ko: 벨기에,        lat:  50.5, lng:    4.5 }
+- { iso2: "CH", fips: "SZ", name_ko: 스위스,        lat:  46.8, lng:    8.2 }
+- { iso2: "AT", fips: "AU", name_ko: 오스트리아,    lat:  47.5, lng:   14.6 }
+- { iso2: "SE", fips: "SW", name_ko: 스웨덴,        lat:  60.1, lng:   18.6 }
+- { iso2: "NO", fips: "NO", name_ko: 노르웨이,      lat:  60.5, lng:    8.5 }
+- { iso2: "DK", fips: "DA", name_ko: 덴마크,        lat:  56.3, lng:    9.5 }
+- { iso2: "FI", fips: "FI", name_ko: 핀란드,        lat:  61.9, lng:   25.7 }
+- { iso2: "IE", fips: "EI", name_ko: 아일랜드,      lat:  53.4, lng:   -8.2 }
+- { iso2: "PT", fips: "PO", name_ko: 포르투갈,      lat:  39.4, lng:   -8.2 }
+- { iso2: "PL", fips: "PL", name_ko: 폴란드,        lat:  51.9, lng:   19.1 }
+- { iso2: "CZ", fips: "EZ", name_ko: 체코,          lat:  49.8, lng:   15.5 }
+- { iso2: "HU", fips: "HU", name_ko: 헝가리,        lat:  47.2, lng:   19.5 }
+- { iso2: "RO", fips: "RO", name_ko: 루마니아,      lat:  45.9, lng:   25.0 }
+- { iso2: "GR", fips: "GR", name_ko: 그리스,        lat:  39.1, lng:   21.8 }
+- { iso2: "TR", fips: "TU", name_ko: 튀르키예,      lat:  39.0, lng:   35.2 }
+- { iso2: "RU", fips: "RS", name_ko: 러시아,        lat:  61.5, lng:  105.3 }
+- { iso2: "UA", fips: "UP", name_ko: 우크라이나,    lat:  48.4, lng:   31.2 }
+- { iso2: "IN", fips: "IN", name_ko: 인도,          lat:  20.6, lng:   79.0 }
+- { iso2: "PK", fips: "PK", name_ko: 파키스탄,      lat:  30.4, lng:   69.3 }
+- { iso2: "BD", fips: "BG", name_ko: 방글라데시,    lat:  23.7, lng:   90.4 }
+- { iso2: "ID", fips: "ID", name_ko: 인도네시아,    lat:  -0.8, lng:  113.9 }
+- { iso2: "MY", fips: "MY", name_ko: 말레이시아,    lat:   4.2, lng:  101.9 }
+- { iso2: "SG", fips: "SN", name_ko: 싱가포르,      lat:   1.35, lng: 103.8 }
+- { iso2: "TH", fips: "TH", name_ko: 태국,          lat:  15.9, lng:  101.0 }
+- { iso2: "VN", fips: "VM", name_ko: 베트남,        lat:  14.1, lng:  108.3 }
+- { iso2: "PH", fips: "RP", name_ko: 필리핀,        lat:  12.9, lng:  121.8 }
+- { iso2: "TW", fips: "TW", name_ko: 대만,          lat:  23.7, lng:  121.0 }
+- { iso2: "HK", fips: "HK", name_ko: 홍콩,          lat:  22.3, lng:  114.2 }
+- { iso2: "AU", fips: "AS", name_ko: 호주,          lat: -25.3, lng:  133.8 }
+- { iso2: "NZ", fips: "NZ", name_ko: 뉴질랜드,      lat: -40.9, lng:  174.9 }
+- { iso2: "CA", fips: "CA", name_ko: 캐나다,        lat:  56.1, lng: -106.3 }
+- { iso2: "MX", fips: "MX", name_ko: 멕시코,        lat:  23.6, lng: -102.6 }
+- { iso2: "BR", fips: "BR", name_ko: 브라질,        lat: -14.2, lng:  -51.9 }
+- { iso2: "AR", fips: "AR", name_ko: 아르헨티나,    lat: -38.4, lng:  -63.6 }
+- { iso2: "CL", fips: "CI", name_ko: 칠레,          lat: -35.7, lng:  -71.5 }
+- { iso2: "CO", fips: "CO", name_ko: 콜롬비아,      lat:   4.6, lng:  -74.3 }
+- { iso2: "PE", fips: "PE", name_ko: 페루,          lat:  -9.2, lng:  -75.0 }
+- { iso2: "ZA", fips: "SF", name_ko: 남아프리카공화국, lat: -30.6, lng: 22.9 }
+- { iso2: "NG", fips: "NI", name_ko: 나이지리아,    lat:   9.1, lng:    8.7 }
+- { iso2: "KE", fips: "KE", name_ko: 케냐,          lat:  -0.02, lng:  37.9 }
+- { iso2: "EG", fips: "EG", name_ko: 이집트,        lat:  26.8, lng:   30.8 }
+- { iso2: "IL", fips: "IS", name_ko: 이스라엘,      lat:  31.0, lng:   34.9 }
+- { iso2: "SA", fips: "SA", name_ko: 사우디아라비아, lat: 23.9, lng:   45.1 }
+- { iso2: "AE", fips: "AE", name_ko: 아랍에미리트,  lat:  23.4, lng:   53.8 }
+- { iso2: "QA", fips: "QA", name_ko: 카타르,        lat:  25.4, lng:   51.2 }
+- { iso2: "IR", fips: "IR", name_ko: 이란,          lat:  32.4, lng:   53.7 }
+- { iso2: "IQ", fips: "IZ", name_ko: 이라크,        lat:  33.2, lng:   43.7 }

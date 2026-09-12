@@ -1,0 +1,14 @@
+# 파이프라인 실행에 필요한 전부. 버전은 2026-09 기준.
+PyYAML>=6.0
+requests>=2.32
+anthropic>=1.0          # llm/anthropic_client.py 에서만 import
+openai>=2.0             # llm/openai_embeddings.py 에서만 import
+google-genai>=1.0       # llm/gemini_client.py 에서만 import (저가안)
+numpy>=2.0
+scikit-learn>=1.5
+hdbscan>=0.8.40
+feedparser>=6.0         # RSS
+Jinja2>=3.1             # step8 정적 빌드
+libsql-client>=0.3      # Turso
+boto3>=1.35             # Cloudflare R2 (S3 호환)
+jsonschema>=4.23

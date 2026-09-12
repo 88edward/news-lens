@@ -1,0 +1,45 @@
+# config/sources.yaml — 수집 예산·가중치 공식·GDELT 쿼리·RSS 목록
+
+budget:
+  articles_per_day: 1000
+  top_n_countries: 25
+  floor_per_country: 10          # 없으면 작은 나라는 영원히 0건
+  cap_per_country: 200           # 없으면 미국이 예산의 절반을 먹는다
+
+weights:
+  providers:
+    - { name: gdelt,  enabled: true,  blend: 1.0 }
+    - { name: manual, enabled: false, blend: 0.0 }   # 수동 개입용
+  formula:
+    attention_coef: 0.7
+    surge_coef: 0.3
+    lookback_days: 7
+  refresh: weekly                # step0 실행 주기
+  manual_scores: {}              # manual provider가 그대로 돌려주는 FIPS→점수
+    # 예: { KS: 500, JA: 300 }
+
+gdelt:
+  doc_api: "https://api.gdeltproject.org/api/v2/doc/doc"
+  maxrecords: 250                # API 상한. 기본 75이므로 반드시 명시
+  timespan: 6h                   # step1이 6시간마다 돌므로
+  sort: hybridrel
+  timeout_seconds: 45
+  retries: 3
+  themes_for_weights:            # 가중치 계산용 경제 테마
+    - ECON_STOCKMARKET
+    - ECON_INTEREST_RATE
+    - ECON_INFLATION
+    - ECON_TRADE_DISPUTE
+    - WB_1104_MACROECONOMIC_VULNERABILITY
+  themes_for_split:              # 한 국가 할당이 maxrecords를 넘을 때 쪼개는 축
+    - ECON_STOCKMARKET
+    - ECON_INTEREST_RATE
+    - GENERAL_GOVERNMENT
+    - ARMEDCONFLICT
+    - EPU_POLICY
+
+rss:
+  poll_per_day: 4
+  timeout_seconds: 20
+  feeds: []                      # 국가 코드(FIPS) 태그를 달아 country별로 귀속시킨다
+    # - { url: "https://feeds.reuters.com/reuters/topNews", fips: US, domain: reuters.com }

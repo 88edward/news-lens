@@ -1,0 +1,54 @@
+# config/models.yaml
+#
+# 역할(role) → 모델 매핑. 모델을 바꿀 때 열어야 하는 유일한 파일이다.
+# 파이썬 코드에는 모델 ID가 한 글자도 나타나지 않는다.
+#
+# 단가는 2026-09 기준 백만 토큰당 USD (Anthropic 1st-party / OpenAI 공시가).
+# batch_discount 는 Batch API 할인율 (0.5 = 반값).
+
+defaults:
+  batch_discount: 0.5
+
+roles:
+  embedding:
+    provider: openai
+    model: text-embedding-3-small
+    mode: sync                  # 임베딩은 batch를 쓰지 않는다 — 즉시 필요하고 싸다
+    dimensions: 512             # 잘라서 int8 양자화
+    max_output_tokens: 0
+    price_per_mtok_in: 0.02
+    price_per_mtok_out: 0.0
+
+  event_analysis:
+    provider: anthropic
+    model: claude-haiku-4-5
+    mode: batch
+    max_output_tokens: 2000
+    prompt: prompts/01_event_analysis.md
+    schema: prompts/_shared/event_schema.json
+    price_per_mtok_in: 1.0
+    price_per_mtok_out: 5.0
+
+  daily_synthesis:
+    provider: anthropic
+    model: claude-sonnet-5
+    mode: batch
+    max_output_tokens: 8000
+    prompt: prompts/02_daily_synthesis.md
+    schema: prompts/_shared/briefing_schema.json
+    price_per_mtok_in: 2.0
+    price_per_mtok_out: 10.0
+
+# ── 저가안 ────────────────────────────────────────────────────────────
+# event_analysis 의 provider/model/price 세 줄만 아래로 바꾸면 월 $21.60 → $4.00.
+# 파이썬 코드는 한 줄도 고치지 않는다.
+#
+#   event_analysis:
+#     provider: gemini
+#     model: gemini-2.5-flash-lite
+#     mode: batch
+#     max_output_tokens: 2000
+#     prompt: prompts/01_event_analysis.md
+#     schema: prompts/_shared/event_schema.json
+#     price_per_mtok_in: 0.10
+#     price_per_mtok_out: 0.40
