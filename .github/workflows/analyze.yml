@@ -3,7 +3,7 @@ name: analyze
 # 분석 — 하루 두 번, 서로 다른 실행으로 나뉜다.
 #
 #   submit   15:10 UTC = 00:10 KST   step2~step5. 배치를 제출하고 즉시 끝낸다.
-#   publish  19:10 UTC = 04:10 KST   step6~step8. 결과를 수거해 사이트를 굽는다.
+#   publish  19:10 UTC = 04:10 KST   step6~step9. 결과를 수거해 사이트를 굽는다.
 #
 # 왜 나누는가: Batch API 는 반값이지만 비동기다(통상 1~4h, 보장 24h).
 # 결과를 기다리며 러너를 켜두면 그 비용이 절감액을 넘는다.
@@ -30,13 +30,14 @@ on:
         default: false
 
 concurrency:
-  group: analyze
+  group: news-lens-db
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write     # DB 덤프 커밋
   issues: write
-  deployments: write
+  pages: write        # GitHub Pages 배포
+  id-token: write
 
 jobs:
   # ── 00:10 KST — 필터·임베딩·클러스터링·배치 제출 ──────────────────
@@ -51,15 +52,9 @@ jobs:
     timeout-minutes: 45
     env:
       DRY: ${{ inputs.dry_run && '--dry-run' || '' }}
-      TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-      TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      R2_BUCKET: ${{ vars.R2_BUCKET || 'news-lens' }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -70,6 +65,8 @@ jobs:
 
       - name: 의존성 설치
         run: pip install -r requirements.txt
+
+      - uses: ./.github/actions/db-restore
 
       - name: step2 룰 필터
         run: python -m pipeline.step2_filter --report $DRY
@@ -82,6 +79,11 @@ jobs:
 
       - name: step5 배치 제출
         run: python -m pipeline.step5_submit_batch --report $DRY
+
+      - uses: ./.github/actions/db-commit
+        if: inputs.dry_run != true
+        with:
+          message: step2~5 제출
 
       - name: 실패하면 이슈를 만든다
         if: failure()
@@ -97,7 +99,7 @@ jobs:
 
   # ── 04:10 KST — 배치 수거·종합·빌드·배포 ─────────────────────────
   publish:
-    name: step6~8 수거와 배포
+    name: step6~9 수거와 배포
     if: >-
       github.event_name == 'schedule' && github.event.schedule == '10 19 * * *'
       || github.event_name == 'workflow_dispatch'
@@ -105,16 +107,14 @@ jobs:
     runs-on: ubuntu-latest
     # 예상 소요: 5~70분 (배치가 아직이면 20분 간격으로 최대 3회 기다린다)
     timeout-minutes: 90
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     env:
       DRY: ${{ inputs.dry_run && '--dry-run' || '' }}
-      TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-      TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      R2_BUCKET: ${{ vars.R2_BUCKET || 'news-lens' }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -125,6 +125,8 @@ jobs:
 
       - name: 의존성 설치
         run: pip install -r requirements.txt
+
+      - uses: ./.github/actions/db-restore
 
       # step6 은 배치가 아직이면 exit 75 로 끝낸다.
       # 실패(1)와 대기(75)를 구분해야 한다 — 대기를 실패로 처리하면
@@ -164,8 +166,8 @@ jobs:
           set +e
           python -m pipeline.step7_synthesize --report $DRY
           code=$?
-          # step7 도 batch 모드면 75 를 낼 수 있다. 브리핑이 없어도
-          # 사건 페이지는 구울 수 있으므로 빌드를 막지 않는다.
+          # daily_synthesis 를 batch 모드로 바꿔 두면 75 가 날 수 있다.
+          # 브리핑이 없어도 사건 페이지는 구울 수 있으므로 빌드를 막지 않는다.
           if [ $code -eq 75 ]; then
             echo "::warning::일일 종합 배치가 아직 처리 중이다. 브리핑 없이 빌드한다."
             exit 0
@@ -176,13 +178,32 @@ jobs:
         if: steps.fetch.outputs.pending != 'true'
         run: python -m pipeline.step8_build_site --report $DRY
 
-      - name: Cloudflare Pages 배포
+      # DB 를 레포에 커밋하므로 크기를 직접 관리해야 한다.
+      # 방치하면 한 해 만에 클론이 불가능해진다.
+      - name: step9 오래된 행 정리
+        if: steps.fetch.outputs.pending != 'true'
+        run: python -m pipeline.step9_prune --report --vacuum $DRY
+
+      - uses: ./.github/actions/db-commit
         if: steps.fetch.outputs.pending != 'true' && inputs.dry_run != true
-        uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
-          accountId: ${{ secrets.R2_ACCOUNT_ID }}
-          command: pages deploy site/dist --project-name=news-lens
+          message: step6~9 분석과 정리
+
+      # ── GitHub Pages 배포 (Cloudflare 계정이 필요 없다) ──────────
+      - name: Pages 설정
+        if: steps.fetch.outputs.pending != 'true' && inputs.dry_run != true
+        uses: actions/configure-pages@v5
+
+      - name: 산출물 업로드
+        if: steps.fetch.outputs.pending != 'true' && inputs.dry_run != true
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site/dist
+
+      - name: Pages 배포
+        id: deploy
+        if: steps.fetch.outputs.pending != 'true' && inputs.dry_run != true
+        uses: actions/deploy-pages@v4
 
       - name: 실패하면 이슈를 만든다
         # 3회 재시도 후에도 대기 중(75)이면 여기로 온다. 그것도 알아야 한다.

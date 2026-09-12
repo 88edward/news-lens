@@ -16,11 +16,11 @@ on:
         default: false
 
 concurrency:
-  group: collect
+  group: news-lens-db
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 jobs:
@@ -29,6 +29,8 @@ jobs:
     runs-on: ubuntu-latest
     # 예상 소요: 2~4분 (국가 25개 × 쿼리 1~2회)
     timeout-minutes: 20
+    env:
+      DRY: ${{ inputs.dry_run && '--dry-run' || '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -40,20 +42,18 @@ jobs:
       - name: 의존성 설치
         run: pip install -r requirements.txt
 
+      - uses: ./.github/actions/db-restore
+
       - name: step1 수집
-        env:
-          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
-          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET: ${{ vars.R2_BUCKET || 'news-lens' }}
-        run: |
-          python -m pipeline.step1_collect --report \
-            ${{ inputs.dry_run && '--dry-run' || '' }}
+        # GDELT 와 RSS 는 인증이 없다. 여기에 키가 필요 없는 이유다.
+        run: python -m pipeline.step1_collect --report $DRY
+
+      - uses: ./.github/actions/db-commit
+        if: inputs.dry_run != true
+        with:
+          message: step1 수집
 
       - name: 실패하면 이슈를 만든다
-        # 크론은 조용히 죽는다. 공통 처리는 .github/actions/report-failure 에 있다.
         if: failure()
         uses: ./.github/actions/report-failure
         with:
@@ -61,5 +61,5 @@ jobs:
           note: |
             수집이 실패했다. 그날 분석할 사건이 없어진다.
 
-            자주 보는 원인: GDELT 응답 형식 변경, R2 자격증명 만료,
+            자주 보는 원인: GDELT 응답 형식 변경,
             country_weights 가 비어 있음(step0 미실행).

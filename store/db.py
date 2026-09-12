@@ -1,7 +1,15 @@
-"""파생 데이터 저장소.
+"""파생 데이터 저장소 — SQLite.
 
-로컬/테스트는 SQLite, 운영은 Turso(libSQL). 두 경우 모두 같은 SQL을 쓴다.
-TURSO_DATABASE_URL 이 있으면 Turso, 없으면 파일 SQLite 를 연다.
+**계정이 필요 없다.** 파일 하나가 전부다.
+
+운영에서는 GitHub Actions 러너가 매 실행마다 새로 뜨므로, 이 파일을 그대로
+두면 상태가 사라진다. 그래서 store/dump.py 가 SQL 텍스트로 내보내
+레포에 커밋하고, 다음 실행이 복원한다. 바이너리 DB 를 커밋하지 않는 이유는
+git 이 바이너리를 델타 압축하지 못하기 때문이다.
+
+규모가 커져 덤프가 수십 MB를 넘으면 외부 DB(Turso/libSQL, D1)로 옮길 때다.
+그때는 이 클래스의 execute/query/one 세 메서드만 갈아 끼우면 된다 —
+나머지 코드는 전부 그 위에 올라가 있다.
 
 step 들은 이전 단계 결과를 인자로 받지 않고 여기서 읽는다.
 """
@@ -292,6 +300,20 @@ class Database:
                 (batch_id, eid),
             )
         self.commit()
+
+    def release_submitted(self, batch_id: str) -> int:
+        """배치가 결과를 못 준 경우 그 사건들을 pending 으로 되돌린다.
+
+        되돌리지 않으면 submitted 상태로 영원히 남아 재제출도 분석도 되지 않는다.
+        증상이 '어느 날 사건이 통째로 비어 있다'로만 나타나서 원인을 찾기 어렵다.
+        """
+        cur = self.execute(
+            """UPDATE events SET status = 'pending', batch_id = NULL
+                WHERE batch_id = ? AND status = 'submitted'""",
+            (batch_id,),
+        )
+        self.commit()
+        return cur.rowcount or 0
 
     def save_event_analysis(
         self,

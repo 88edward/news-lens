@@ -1,0 +1,14 @@
+name: DB 복원
+description: 레포에 커밋된 SQL 덤프를 SQLite 파일로 되살린다.
+
+# 러너는 매 실행마다 새로 뜬다. 이걸 안 하면 step1 이 모은 기사가
+# 4시간 뒤 step2 실행에서는 존재하지 않는다.
+
+runs:
+  using: composite
+  steps:
+    - name: data/news-lens.sql → news-lens.db
+      shell: bash
+      run: |
+        python -m store.dump import
+        python -m store.dump size

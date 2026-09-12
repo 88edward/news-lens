@@ -58,10 +58,14 @@ def test_YAML_앵커를_쓰지_않는다(name):
 
 
 @pytest.mark.parametrize("name", WORKFLOWS)
-def test_중복_실행을_막는다(name):
-    """크론이 겹쳐 돌면 같은 기사를 두 번 수집하거나 배치를 두 번 제출한다."""
+def test_세_워크플로가_같은_큐를_쓴다(name):
+    """셋이 같은 DB 덤프 파일을 쓴다. 동시에 돌면 한쪽 커밋이 덮인다.
+
+    concurrency 그룹 이름은 레포 전체에서 공유되므로, 같은 이름을 주면
+    서로 겹쳐 돌지 않는다.
+    """
     wf = load(name)
-    assert wf["concurrency"]["group"]
+    assert wf["concurrency"]["group"] == "news-lens-db"
     assert wf["concurrency"]["cancel-in-progress"] is False
 
 
@@ -73,6 +77,44 @@ def test_수동_실행이_가능하다(name):
 @pytest.mark.parametrize("name", WORKFLOWS)
 def test_이슈를_만들_권한이_있다(name):
     assert load(name)["permissions"]["issues"] == "write"
+
+
+@pytest.mark.parametrize("name", WORKFLOWS)
+def test_DB를_커밋할_권한이_있다(name):
+    """덤프를 푸시하지 못하면 다음 실행이 빈 DB로 시작한다."""
+    assert load(name)["permissions"]["contents"] == "write"
+
+
+@pytest.mark.parametrize("name", WORKFLOWS)
+def test_모든_job이_DB를_복원하고_커밋한다(name):
+    """러너는 매 실행마다 새로 뜬다. 이게 빠지면 상태가 사라진다."""
+    for job_name, job in load(name)["jobs"].items():
+        uses = [s.get("uses", "") for s in job["steps"]]
+        assert "./.github/actions/db-restore" in uses, f"{name}/{job_name}: 복원 없음"
+        assert "./.github/actions/db-commit" in uses, f"{name}/{job_name}: 커밋 없음"
+
+
+@pytest.mark.parametrize("name", WORKFLOWS)
+def test_복원이_파이프라인보다_먼저_온다(name):
+    for job in load(name)["jobs"].values():
+        steps = job["steps"]
+        restore_at = next(
+            i for i, s in enumerate(steps)
+            if s.get("uses") == "./.github/actions/db-restore"
+        )
+        first_step = next(
+            (i for i, s in enumerate(steps) if "python -m pipeline." in s.get("run", "")),
+            None,
+        )
+        assert first_step is None or restore_at < first_step
+
+
+@pytest.mark.parametrize("name", WORKFLOWS)
+def test_dry_run은_DB를_커밋하지_않는다(name):
+    for job in load(name)["jobs"].values():
+        for step in job["steps"]:
+            if step.get("uses") == "./.github/actions/db-commit":
+                assert "inputs.dry_run != true" in step["if"]
 
 
 @pytest.mark.parametrize("name", WORKFLOWS)
@@ -195,17 +237,35 @@ def test_재시도가_다_실패하면_빌드를_건너뛴다():
     """배치가 안 끝났는데 빌드하면 어제 내용으로 사이트를 덮어쓴다."""
     job = load("analyze")["jobs"]["publish"]
     for step in job["steps"]:
-        run = step.get("run", "") + str(step.get("with", ""))
-        if "step8_build_site" in run or "pages deploy" in run:
+        run = step.get("run", "")
+        uses = str(step.get("uses", ""))
+        if "step8_build_site" in run or "deploy-pages" in uses or "upload-pages" in uses:
             assert "steps.fetch.outputs.pending != 'true'" in step["if"]
+
+
+def test_GitHub_Pages로_배포한다():
+    """Cloudflare 계정 없이 배포한다 — 레포만 있으면 된다."""
+    wf = load("analyze")
+    uses = [s.get("uses", "") for s in wf["jobs"]["publish"]["steps"]]
+    assert any("actions/upload-pages-artifact" in u for u in uses)
+    assert any("actions/deploy-pages" in u for u in uses)
+    assert not any("wrangler" in u for u in uses), "Cloudflare 의존이 남아 있다"
+    assert wf["permissions"]["pages"] == "write"
+    assert wf["permissions"]["id-token"] == "write"
 
 
 def test_배포는_dry_run에서_돌지_않는다():
     job = load("analyze")["jobs"]["publish"]
     deploy = next(
-        s for s in job["steps"] if "wrangler-action" in str(s.get("uses", ""))
+        s for s in job["steps"] if "actions/deploy-pages" in str(s.get("uses", ""))
     )
     assert "inputs.dry_run != true" in deploy["if"]
+
+
+def test_publish가_DB를_정리한다():
+    """레포에 커밋하는 DB는 크기를 직접 관리해야 한다."""
+    cmds = step_commands(load("analyze")["jobs"]["publish"])
+    assert "pipeline.step9_prune" in cmds
 
 
 def test_step7이_대기중이어도_빌드를_막지_않는다():
@@ -216,6 +276,15 @@ def test_step7이_대기중이어도_빌드를_막지_않는다():
 
 
 # ── 시크릿 ──────────────────────────────────────────────────────────────
+
+
+def test_필수_시크릿은_Gemini_하나다():
+    """가입할 곳이 하나여야 한다는 게 이 구성의 요점이다."""
+    example = (ROOT / ".env.example").read_text(encoding="utf-8")
+    required_block = example.split("선택")[0]
+    assert "GEMINI_API_KEY" in required_block
+    assert "ANTHROPIC_API_KEY" not in required_block
+    assert "TURSO" not in example, "Turso 는 구현돼 있지 않다. 적어 두면 거짓말이 된다"
 
 
 def test_참조하는_시크릿이_전부_env_example에_있다():
@@ -234,6 +303,22 @@ def test_env_example이_키_없이도_돈다고_알린다():
 
 
 # ── composite action ────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("action", ["report-failure", "db-restore", "db-commit"])
+def test_composite_action이_유효하다(action):
+    path = ROOT / ".github" / "actions" / action / "action.yml"
+    spec = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert spec["runs"]["using"] == "composite"
+
+
+def test_DB커밋이_충돌을_rebase로_풀지_않는다():
+    """덤프는 생성 파일이라 줄 단위 충돌을 자동으로 풀 방법이 없다."""
+    text = (ROOT / ".github" / "actions" / "db-commit" / "action.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "git reset --soft" in text
+    assert "rebase" not in text.split("rebase 를 쓰지 않는다")[-1]
 
 
 def test_실패보고_액션이_유효하다():

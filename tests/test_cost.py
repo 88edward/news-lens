@@ -12,9 +12,11 @@ from llm.base import Usage
 
 
 def test_동기_호출_비용이_단가와_맞는다(config_dir):
-    # daily_synthesis: $2.00/MTok in, $10.00/MTok out
+    """단가는 models.yaml 에서 온다. 여기에 숫자를 박으면 모델을 바꿀 때 깨진다."""
+    spec = config.role("daily_synthesis")
+    expected = spec["price_per_mtok_in"] + spec["price_per_mtok_out"]
     usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000, batch=False)
-    assert cost.price_of("daily_synthesis", usage) == pytest.approx(12.0)
+    assert cost.price_of("daily_synthesis", usage) == pytest.approx(expected)
 
 
 def test_batch는_반값이다(config_dir):
@@ -33,16 +35,26 @@ def test_캐시_읽기는_입력의_10퍼센트로_계산된다(config_dir):
     )
 
 
-def test_설계서의_월_비용_추정과_자릿수가_맞는다(config_dir):
-    """사건 분석 Haiku 4.5 batch, 하루 180건 × 30일 = 5,400 호출.
+def test_월_비용이_예산_안에_들어온다(config_dir):
+    """사건 분석 하루 180건 × 30일 = 5,400 호출.
 
-    설계서 표의 $21.60 과 같은 자릿수여야 한다. 여기서 크게 벗어나면
-    단가표나 호출 수 가정 중 하나가 틀린 것이다.
+    CLAUDE.md 가 정한 LLM 예산은 월 $25 다. 기본 설정이 그 안에 들어와야 한다.
+    단가표나 호출 수 가정이 틀어지면 여기서 걸린다.
     """
     monthly = cost.estimate(
         "event_analysis", in_tokens=3_000, out_tokens=700, n=180 * 30
     )
-    assert 10.0 < monthly < 45.0
+    assert 0 < monthly < 25.0, f"월 ${monthly:.2f} 는 예산 $25 를 넘는다"
+
+
+def test_일일_상한이_실제_하루치를_감당한다(config_dir):
+    """상한이 너무 낮으면 매일 step5 가 중단된다 — 조용히 사이트가 안 갱신된다."""
+    daily = cost.estimate("event_analysis", in_tokens=3_000, out_tokens=700, n=180)
+    daily += cost.estimate("embedding", in_tokens=60, out_tokens=0, n=700)
+    daily += cost.estimate("daily_synthesis", in_tokens=8_000, out_tokens=4_000, n=1)
+    assert daily < cost.max_daily_cost_usd(), (
+        f"하루 예상 ${daily:.4f} 가 상한 ${cost.max_daily_cost_usd()} 를 넘는다"
+    )
 
 
 def test_상한을_넘길_호출은_중단된다(config_dir):
@@ -88,20 +100,21 @@ def test_상한이_없으면_설정_오류다(config_dir):
 
 
 def test_모델을_바꾸면_비용도_따라_바뀐다(config_dir):
+    """품질안(Anthropic Haiku)으로 올리면 비용이 따라 올라야 한다."""
     before = cost.estimate("event_analysis", in_tokens=3_000, out_tokens=700, n=5400)
     config_dir.patch(
         "models",
         lambda d: d["roles"]["event_analysis"].update(
             {
-                "provider": "gemini",
-                "model": "gemini-2.5-flash-lite",
-                "price_per_mtok_in": 0.10,
-                "price_per_mtok_out": 0.40,
+                "provider": "anthropic",
+                "model": "claude-haiku-4-5",
+                "price_per_mtok_in": 1.0,
+                "price_per_mtok_out": 5.0,
             }
         ),
     )
     after = cost.estimate("event_analysis", in_tokens=3_000, out_tokens=700, n=5400)
-    assert after < before / 5  # 저가안은 한 자릿수 달러여야 한다
+    assert after > before * 5  # 기본값(저가안)보다 확실히 비싸야 한다
 
 
 def test_원장은_db에_기록을_넘긴다(config_dir):

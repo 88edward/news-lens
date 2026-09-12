@@ -13,7 +13,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from .base import (
     BatchItemResult,
@@ -21,6 +21,7 @@ from .base import (
     BatchResults,
     BatchStatus,
     Completion,
+    EmbedResult,
     LLMClient,
     Usage,
 )
@@ -56,6 +57,57 @@ class GeminiClient(LLMClient):
             output_tokens=getattr(meta, "candidates_token_count", 0) or 0,
             cached_input_tokens=getattr(meta, "cached_content_token_count", 0) or 0,
             batch=batch,
+        )
+
+    # ── 임베딩 ────────────────────────────────────────────────────────
+
+    @property
+    def dimensions(self) -> int:
+        return int(self.spec.get("dimensions") or 0)
+
+    def embed(self, texts: Sequence[str]) -> EmbedResult:
+        """텍스트마다 벡터 하나씩.
+
+        ★ 함정 ★ gemini-embedding-2 에 문자열 리스트를 그대로 넘기면
+        여러 입력을 **하나로 합친 임베딩 1개**가 돌아온다. 그대로 쓰면
+        모든 기사가 같은 벡터가 되어 클러스터링이 조용히 무너진다.
+        각 텍스트를 Content 로 감싸야 따로 나온다. 그래도 믿지 말고
+        개수를 검증한다 — 여기서 틀리면 증상이 '사건이 이상하게 묶인다'로만
+        나타나서 원인을 찾기 어렵다.
+        """
+        if not texts:
+            return EmbedResult(vectors=[], model=self.model, usage=Usage())
+
+        client = self._sdk()
+        from google.genai import types  # noqa: PLC0415
+
+        contents = [types.Content(parts=[types.Part(text=t)]) for t in texts]
+        config = (
+            types.EmbedContentConfig(output_dimensionality=self.dimensions)
+            if self.dimensions
+            else None
+        )
+        resp = client.models.embed_content(
+            model=self.model, contents=contents, config=config
+        )
+
+        embeddings = list(resp.embeddings or [])
+        if len(embeddings) != len(texts):
+            raise RuntimeError(
+                f"임베딩 개수가 맞지 않는다: 입력 {len(texts)}건 → 응답 "
+                f"{len(embeddings)}건. gemini-embedding-2 가 입력을 하나로 합쳤을 수 있다. "
+                "Content 래핑을 확인해라 — 이대로 두면 모든 기사가 같은 벡터가 된다."
+            )
+
+        tokens = 0
+        for item in embeddings:
+            stats = getattr(item, "statistics", None)
+            tokens += int(getattr(stats, "token_count", 0) or 0)
+
+        return EmbedResult(
+            vectors=[list(item.values) for item in embeddings],
+            model=self.model,
+            usage=Usage(input_tokens=tokens, output_tokens=0, batch=False),
         )
 
     def complete(

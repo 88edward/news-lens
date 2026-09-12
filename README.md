@@ -19,16 +19,35 @@ GDELT 2.0 API ─┐
         step7  일일 종합 1회            │ 04:10 KST
         step8  글로브 JSON + 정적 빌드   ┘
                ▼
-        R2(원문) / Turso(파생)
+        SQLite → SQL 덤프로 레포에 커밋
                ▼
-        Pages(정적) + Workers(검색)
+          GitHub Pages
 ```
+
+**필요한 계정은 두 곳이다.** GitHub(무료)과 Google AI Studio(무료 티어).
+GDELT·RSS는 인증이 없고, 저장소는 파일 하나이며, 배포는 레포가 곧 호스팅이다.
 
 **핵심 규칙: 기사 1건마다 LLM을 호출하지 않는다.** 임베딩으로 같은 사건을 묶은 뒤
 사건 단위로만 호출한다. 이 한 가지가 비용을 4~5배 가른다.
 하루 1,000건 수집 → 필터 후 ~700건 → 사건 ~180개 → LLM 호출 181회.
 
 설계 배경은 [docs/DESIGN.md](docs/DESIGN.md), 프로젝트 규칙은 [CLAUDE.md](CLAUDE.md).
+
+---
+
+## 처음 띄우기
+
+1. 이 레포를 자기 GitHub 계정으로 fork 하거나 push 한다.
+2. <https://aistudio.google.com/apikey> 에서 키를 받는다 (무료).
+3. 레포 Settings → Secrets and variables → Actions → New repository secret
+   → 이름 `GEMINI_API_KEY`, 값은 받은 키.
+4. 레포 Settings → Pages → Source 를 **GitHub Actions** 로 바꾼다.
+5. Actions 탭에서 순서대로 한 번씩 수동 실행한다:
+   `weights` → `collect` → `analyze`(job=submit) → `analyze`(job=publish)
+6. 이후로는 크론이 알아서 돈다.
+
+각 실행이 끝나면 `data/news-lens.sql` 에 새 커밋이 올라온다. 그게 파이프라인의
+상태다 — 러너는 매번 새로 뜨므로 이 파일이 없으면 다음 실행이 빈 DB로 시작한다.
 
 ---
 
@@ -85,22 +104,29 @@ python -m pytest
 ```yaml
 roles:
   event_analysis:
-    provider: anthropic          # ← anthropic | gemini | openai | fake
-    model: claude-haiku-4-5      # ← 모델 ID는 여기에만 존재한다
+    provider: gemini             # ← gemini | anthropic | openai | fake
+    model: gemini-2.5-flash-lite # ← 모델 ID는 여기에만 존재한다
     mode: batch                  # ← batch(반값, 비동기) | sync
-    price_per_mtok_in: 1.0       # ← 비용 계산과 상한 판정에 쓰인다
-    price_per_mtok_out: 5.0
+    price_per_mtok_in: 0.10      # ← 비용 계산과 상한 판정에 쓰인다
+    price_per_mtok_out: 0.40
 ```
 
-저가안으로 갈아타려면 `event_analysis` 의 네 줄만 바꾼다 (월 $21.60 → $4.00).
-`models.yaml` 안에 주석으로 그대로 적어 뒀다. 파이썬은 한 줄도 안 고친다.
+기본값은 세 역할 모두 Gemini 다. 가입할 곳이 한 곳이고 전부 무료 티어가 있다.
+
+분석 품질을 올리고 싶으면 `event_analysis` 를 Claude Haiku 4.5 로 바꾼다
+(`models.yaml` 주석에 그대로 적어 뒀다). `ANTHROPIC_API_KEY` 가 추가로 필요하고
+월 $4 → $21.60 이 된다. 파이썬은 한 줄도 안 고친다.
 
 단가를 같이 안 고치면 비용 집계와 일일 상한이 틀어진다. 같이 고쳐라.
 
-**`daily_synthesis` 의 `mode`:** 기본값 `batch` 는 반값이지만 비동기라서,
-브리핑이 제출 다음 실행(= 하루 뒤 04:10)에 올라온다. 당일 브리핑을 원하면
-`mode: sync` 로 바꿔라 — 하루 1회 호출이라 차액은 월 $1.80 정도다.
-`event_analysis` 는 하루 180회라 `batch` 를 유지하는 편이 낫다.
+**`daily_synthesis` 의 `mode`:** 기본값은 `sync` 다 — 하루 1회뿐이라
+당일 브리핑을 위해 즉시 부른다. `batch` 로 바꾸면 반값이지만 비동기라서
+브리핑이 다음 실행(하루 뒤)에 올라온다. `event_analysis` 는 하루 180회라
+`batch` 를 유지하는 편이 낫다.
+
+**임베딩 모델을 바꾸면** 기존 벡터와 거리 계산이 호환되지 않는다.
+`embeddings` 테이블의 `model` 컬럼이 섞이는 것을 막아 주지만, 바꾼 날은
+그날 기사 전체를 다시 임베딩한다.
 
 ### 수집량 바꾸기 — `config/sources.yaml` 의 `budget`
 
@@ -181,7 +207,11 @@ python -m pipeline.step4_cluster --recluster --report
 | `weights.yml` | 일 18:00 / 월 03:00 | step0 국가 가중치 | 2~3분 |
 | `collect.yml` | `5 */6 * * *` | step1 수집 | 2~4분 |
 | `analyze.yml` (submit) | 15:10 / 00:10 | step2~5, 배치 제출 | 6~10분 |
-| `analyze.yml` (publish) | 19:10 / 04:10 | step6~8, Pages 배포 | 5~70분 |
+| `analyze.yml` (publish) | 19:10 / 04:10 | step6~9, Pages 배포 | 5~70분 |
+
+세 워크플로는 `news-lens-db` 라는 **같은 concurrency 그룹**을 쓴다.
+그룹 이름은 레포 전체에서 공유되므로, 셋이 동시에 돌아 DB 덤프를 서로
+덮어쓰는 일이 없다.
 
 월 합계 대략 **1,100분**. public 레포는 Actions 분이 무제한이고,
 private 레포는 월 2,000분이 무료다. publish 의 편차가 큰 이유는 배치 대기
@@ -192,6 +222,37 @@ private 레포는 월 2,000분이 무료다. publish 의 편차가 큰 이유는
 
 `analyze` 가 두 실행으로 나뉜 이유: Batch API는 반값이지만 비동기다
 (통상 1~4h, 보장 24h). 결과를 기다리며 러너를 켜두면 그 비용이 절감액을 넘는다.
+
+### 상태는 레포에 산다
+
+러너는 실행이 끝나면 사라진다. 그래서 각 job 은 이렇게 돈다:
+
+```
+db-restore  →  data/news-lens.sql  →  news-lens.db
+   step 실행
+db-commit   →  news-lens.db  →  data/news-lens.sql  →  git push
+```
+
+이걸 빠뜨리면 `collect` 가 모은 기사가 4시간 뒤 `analyze` 실행에는
+존재하지 않는다. 워크플로 테스트가 모든 job 에 두 단계가 있는지 검사한다.
+
+**바이너리 DB 가 아니라 SQL 텍스트를 커밋한다.** git 은 바이너리를 델타
+압축하지 못해서, SQLite 파일을 그대로 커밋하면 한 행만 바뀌어도 히스토리에
+파일 전체가 쌓인다. 하루 5번 커밋하면 1년에 기가바이트 단위가 된다.
+
+**크기는 `step9_prune` 이 매일 묶는다.**
+
+| 대상 | 보관 | 이유 |
+|---|---|---|
+| 임베딩 | 클러스터링 직후 삭제 | 가장 큰 덩어리(벡터당 768B), 이후 쓸 데 없음 |
+| 기사 행 | 14일 | 사건과 출처 링크는 `events` 에 남는다 |
+| `filter_log` | 14일 | |
+| 사건 분석 전문 | 60일 | 전문은 이미 정적 페이지에 구워져 있다 |
+| 사건 헤드라인·논조 | 영구 | 목록과 글로브가 쓴다 |
+| 브리핑·가중치 | 영구 / 365일 | 작다 |
+
+`python -m store.dump size` 가 현재 덤프 크기를 알려준다.
+50MB를 넘으면 경고가 뜬다 — 그때가 외부 DB로 옮길 때다.
 
 ### exit code 75
 
@@ -210,14 +271,20 @@ private 레포는 월 2,000분이 무료다. publish 의 편차가 큰 이유는
 
 ### 시크릿
 
-`.env.example` 에 전부 나열돼 있다. 레포의
-Settings → Secrets and variables → Actions 에 같은 이름으로 등록한다.
+**필수는 하나다.**
 
 ```
-ANTHROPIC_API_KEY  OPENAI_API_KEY  GEMINI_API_KEY
-TURSO_DATABASE_URL  TURSO_AUTH_TOKEN
-R2_ACCOUNT_ID  R2_ACCESS_KEY_ID  R2_SECRET_ACCESS_KEY
-CF_API_TOKEN
+GEMINI_API_KEY      https://aistudio.google.com/apikey
+```
+
+나머지는 전부 선택이고, `config/models.yaml` 에서 해당 provider 를 켠
+경우에만 필요하다. `.env.example` 에 무엇이 언제 필요한지 적어 뒀다.
+
+```
+ANTHROPIC_API_KEY   event_analysis 를 Claude 로 바꿨을 때
+OPENAI_API_KEY      embedding 을 OpenAI 로 되돌렸을 때
+R2_*                원문 아카이브를 Cloudflare R2 에 둘 때
+CF_API_TOKEN        site/worker/ 의 검색 API 를 올릴 때
 ```
 
 ### 비용이 이상할 때
@@ -251,22 +318,24 @@ SELECT date, fips, weight, surge_raw FROM country_weights ORDER BY date DESC;
 
 ## 예상 월 비용
 
-| 항목 | 서비스 | 월 비용 |
-|---|---|---|
-| 뉴스 수집 | GDELT 2.0 + RSS | $0 |
-| 국가 가중치 | GDELT `timelinesourcecountry` | $0 |
-| 스케줄러 | GitHub Actions (~1,100분) | $0 |
-| 원문 보관 | Cloudflare R2 (60MB/월) | $0 |
-| 파생 데이터 | Turso 또는 D1 (32MB/월) | $0 |
-| 정적 배포 | Cloudflare Pages | $0 |
-| 임베딩 | `text-embedding-3-small` | $0.17 |
-| 사건 분석 | Haiku 4.5 batch (5,400 호출) | $21.60 |
-| 사건 분석 (저가안) | Gemini 2.5 Flash-Lite | $4.00 |
-| 일일 종합 | Sonnet 5 batch (30 호출) | $1.80 |
-| 검색 API (선택) | Workers Paid | $5.00 |
-| **합계** | 저가안 → 품질안 | **$6 – $29** |
+| 항목 | 서비스 | 계정 | 월 비용 |
+|---|---|---|---|
+| 뉴스 수집 | GDELT 2.0 + RSS | 불필요 | $0 |
+| 국가 가중치 | GDELT `timelinesourcecountry` | 불필요 | $0 |
+| 스케줄러 | GitHub Actions (~1,100분) | GitHub | $0 |
+| 저장소 | SQLite → 레포 커밋 | 불필요 | $0 |
+| 정적 배포 | GitHub Pages | GitHub | $0 |
+| 임베딩 | `gemini-embedding-2` | Google | **무료 티어** |
+| 사건 분석 | `gemini-2.5-flash-lite` batch | Google | **무료 티어** |
+| 일일 종합 | `gemini-2.5-flash-lite` | Google | **무료 티어** |
+| **합계 (기본)** | | **2곳** | **$0 ~ $4** |
 
-`config/pipeline.yaml` 의 `max_daily_cost_usd: 1.20` 은 월 $36 상한에 해당한다.
+무료 티어 한도를 넘기면 유료로 전환되고, 그때 위 세 항목이 합쳐서 월 $4 수준이다.
+`config/pipeline.yaml` 의 `max_daily_cost_usd: 1.20` 이 상한을 강제한다 —
+넘으면 코드가 중단시킨다.
+
+품질안(사건 분석을 Claude Haiku 4.5 로)으로 올리면 Anthropic 계정이 추가되고
+월 $21.60 이 된다.
 
 ---
 
@@ -278,7 +347,8 @@ SELECT date, fips, weight, surge_raw FROM country_weights ORDER BY date DESC;
   Investing.com은 공개 API가 없고 약관상 프로그래밍 방식 접근이 금지돼 있다.
   이 레포에 스크래퍼를 넣지 마라 — 공개 사이트의 데이터 소스로 삼으면
   서비스 전체가 막힌다.
-- **원문을 git에 커밋하지 않는다.** R2에 하루 1개 gzip JSONL로 간다.
+- **기사 원문을 git에 커밋하지 않는다.** `data/raw/` 는 gitignore 돼 있다.
+  레포에 싣는 것은 파생 데이터 덤프(`data/news-lens.sql`)뿐이다.
 - **WebGL 폴백을 지운다면 그 전에 껐다 켜 봐라.** 글로브가 안 뜨면
   사이트 전체가 빈 화면이 된다.
 
@@ -314,7 +384,9 @@ prompts/    ★ LLM 지시문과 JSON 스키마. 문구는 코드에 두지 않�
 llm/        ★ 벤더 SDK가 존재하는 유일한 곳. pipeline/ 은 registry만 안다
 weights/    ★ 국가 관심도 provider 인터페이스. pipeline/ 은 소스를 모른다
 pipeline/   파일명 번호 = 실행 순서. 각 step은 단독 실행 가능
-store/      schema.sql · db.py(Turso/SQLite) · blobs.py(R2)
-site/       templates(Jinja2) · static(globe.gl) · worker(TS) · dist(gitignore)
+store/      schema.sql · db.py(SQLite) · dump.py(레포 커밋용 SQL 덤프) · blobs.py
+site/       templates(Jinja2) · static(globe.gl) · dist(gitignore)
+            worker/ 는 선택 — Cloudflare Workers 검색 API. 기본 구성에선 안 쓴다
+data/       news-lens.sql 만 커밋된다. 이게 파이프라인의 상태다
 tests/      fixtures 200건 + fake provider. 실제 API를 호출하지 않는다
 ```

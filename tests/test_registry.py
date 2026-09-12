@@ -130,8 +130,18 @@ def test_빈_배치는_제출하지_않는다(config_dir, fake_client):
         client.submit_batch([])
 
 
-def test_지원하지_않는_기능은_역할_이름과_함께_실패한다(config_dir, fake_client):
-    """embedding 역할에 batch 를 요구하면 무엇이 문제인지 바로 알 수 있어야 한다."""
-    client = registry.get_client("embedding")
+def test_지원하지_않는_기능은_역할_이름과_함께_실패한다(config_dir):
+    """임베딩 전용 어댑터에 batch 를 요구하면 무엇이 문제인지 바로 알아야 한다.
+
+    OpenAI 어댑터는 embed 만 구현한다 — base 의 기본 구현이 역할 이름을
+    담아 NotImplementedError 를 낸다.
+    """
+    config_dir.patch(
+        "models",
+        lambda d: d["roles"]["embedding"].update(
+            {"provider": "openai", "model": "text-embedding-3-small"}
+        ),
+    )
+    client = registry.get_client("embedding", fresh=True)
     with pytest.raises(NotImplementedError, match="embedding"):
         client.submit_batch([BatchRequest(custom_id="x", system="s", user="u")])

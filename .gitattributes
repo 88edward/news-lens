@@ -1,0 +1,10 @@
+# DB 덤프는 생성 파일이다. 줄바꿈이 플랫폼마다 달라지면 diff 가 통째로
+# 바뀐 것처럼 보이고 히스토리가 불필요하게 커진다. LF 로 못박는다.
+data/news-lens.sql text eol=lf linguist-generated=true
+
+# 리뷰에서 접어 두기 좋게 표시한다.
+tests/fixtures/*.json linguist-generated=true
+
+*.py text eol=lf
+*.yml text eol=lf
+*.sql text eol=lf

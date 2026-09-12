@@ -205,11 +205,12 @@ def test_step3이_임베딩을_저장한다(filtered, config_dir, fake_client):
     )
     assert run_step(step3_embed, filtered) == 0
 
+    dims = int(config.role("embedding")["dimensions"])
     db = connect(filtered)
     rows = db.query("SELECT * FROM embeddings")
     assert rows
-    assert all(r["dimensions"] == 512 for r in rows)
-    assert all(len(r["vector"]) == 512 for r in rows), "int8 이면 차원당 1바이트다"
+    assert all(r["dimensions"] == dims for r in rows)
+    assert all(len(r["vector"]) == dims for r in rows), "int8 이면 차원당 1바이트다"
 
 
 def test_임베딩에_모델이_기록된다(filtered, config_dir, fake_client):

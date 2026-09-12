@@ -12,9 +12,9 @@ defaults:
 roles:
   embedding:
     provider: fake
-    model: fake-embedding-512
+    model: fake-embedding-768
     mode: sync
-    dimensions: 512
+    dimensions: 768
     max_output_tokens: 0
     price_per_mtok_in: 0.02
     price_per_mtok_out: 0.0
@@ -32,7 +32,7 @@ roles:
   daily_synthesis:
     provider: fake
     model: fake-synthesizer
-    mode: batch
+    mode: sync                  # config/models.yaml 의 기본값과 맞춘다
     max_output_tokens: 8000
     prompt: prompts/02_daily_synthesis.md
     schema: prompts/_shared/briefing_schema.json

@@ -3,7 +3,10 @@
 # 역할(role) → 모델 매핑. 모델을 바꿀 때 열어야 하는 유일한 파일이다.
 # 파이썬 코드에는 모델 ID가 한 글자도 나타나지 않는다.
 #
-# 단가는 2026-09 기준 백만 토큰당 USD (Anthropic 1st-party / OpenAI 공시가).
+# 기본 구성은 **Gemini 하나**다. 가입할 곳이 Google AI Studio 한 곳뿐이고,
+# 세 역할 모두 무료 티어가 있어 $0으로 시작할 수 있다.
+#
+# 단가는 2026-09 기준 백만 토큰당 USD (유료 전환 시).
 # batch_discount 는 Batch API 할인율 (0.5 = 반값).
 
 defaults:
@@ -11,44 +14,59 @@ defaults:
 
 roles:
   embedding:
-    provider: openai
-    model: text-embedding-3-small
+    provider: gemini
+    model: gemini-embedding-2
     mode: sync                  # 임베딩은 batch를 쓰지 않는다 — 즉시 필요하고 싸다
-    dimensions: 512             # 잘라서 int8 양자화
+    dimensions: 768             # Gemini 권장값은 768/1536/3072. 512는 쓰지 않는다.
     max_output_tokens: 0
-    price_per_mtok_in: 0.02
+    price_per_mtok_in: 0.20     # 무료 티어 있음
     price_per_mtok_out: 0.0
 
   event_analysis:
-    provider: anthropic
-    model: claude-haiku-4-5
+    provider: gemini
+    model: gemini-2.5-flash-lite
     mode: batch
     max_output_tokens: 2000
     prompt: prompts/01_event_analysis.md
     schema: prompts/_shared/event_schema.json
-    price_per_mtok_in: 1.0
-    price_per_mtok_out: 5.0
+    price_per_mtok_in: 0.10     # 무료 티어 있음
+    price_per_mtok_out: 0.40
 
   daily_synthesis:
-    provider: anthropic
-    model: claude-sonnet-5
-    mode: batch
+    provider: gemini
+    model: gemini-2.5-flash-lite
+    mode: sync                  # 하루 1회뿐이라 당일 브리핑을 위해 동기로 부른다
     max_output_tokens: 8000
     prompt: prompts/02_daily_synthesis.md
     schema: prompts/_shared/briefing_schema.json
-    price_per_mtok_in: 2.0
-    price_per_mtok_out: 10.0
+    price_per_mtok_in: 0.10
+    price_per_mtok_out: 0.40
 
-# ── 저가안 ────────────────────────────────────────────────────────────
-# event_analysis 의 provider/model/price 세 줄만 아래로 바꾸면 월 $21.60 → $4.00.
+# ── 품질안 ────────────────────────────────────────────────────────────
+# 사건 분석 품질을 올리고 싶으면 event_analysis 를 아래로 바꾼다.
+# Anthropic 계정과 ANTHROPIC_API_KEY 가 추가로 필요하고, 월 $4 → $21.60 이 된다.
 # 파이썬 코드는 한 줄도 고치지 않는다.
 #
 #   event_analysis:
-#     provider: gemini
-#     model: gemini-2.5-flash-lite
+#     provider: anthropic
+#     model: claude-haiku-4-5
 #     mode: batch
 #     max_output_tokens: 2000
 #     prompt: prompts/01_event_analysis.md
 #     schema: prompts/_shared/event_schema.json
-#     price_per_mtok_in: 0.10
-#     price_per_mtok_out: 0.40
+#     price_per_mtok_in: 1.0
+#     price_per_mtok_out: 5.0
+#
+# 임베딩을 OpenAI 로 되돌리려면 (OPENAI_API_KEY 필요):
+#
+#   embedding:
+#     provider: openai
+#     model: text-embedding-3-small
+#     mode: sync
+#     dimensions: 512
+#     price_per_mtok_in: 0.02
+#     price_per_mtok_out: 0.0
+#
+# 주의: 임베딩 모델을 바꾸면 기존 벡터와 거리 계산이 호환되지 않는다.
+# embeddings 테이블의 model 컬럼이 이를 막아 주지만, 바꾼 날은
+# 그날 기사 전체를 다시 임베딩한다.

@@ -13,9 +13,9 @@ filter:
   domain_allowlist: []           # 비어 있으면 블록리스트만 적용
 
 embed:
-  dimensions: 512
+  dimensions: 768          # models.yaml 의 dimensions 와 맞춘다
   quantize: int8
-  batch_size: 128
+  batch_size: 100          # Gemini embed_content 한 번에 보내는 개수
   text_fields: [title, lead]     # 본문 전체를 넣지 않는다
 
 cluster:
@@ -32,9 +32,16 @@ batch:
   max_requests_per_batch: 1000
 
 retention:
+  # DB 를 레포에 커밋하므로 크기를 직접 관리해야 한다. step9_prune 이 쓴다.
   raw_blob_days: 90
-  static_build_days: 30          # 그보다 오래된 것은 Worker가 처리한다
+  static_build_days: 30          # 이 기간만 정적으로 굽는다
   weights_history_days: 365
+  article_days: 14               # 기사 원본 행은 이만큼만 남긴다
+  filter_log_days: 14
+  analysis_days: 60              # 사건 분석 JSON 전문을 남기는 기간
+                                 # (지나면 헤드라인·논조만 남기고 비운다.
+                                 #  전문은 이미 정적 페이지에 구워져 있다)
+  drop_embeddings_after_cluster: true   # 클러스터링 뒤 벡터는 쓸 데가 없다
 
 site:
   base_url: "https://news-lens.pages.dev"

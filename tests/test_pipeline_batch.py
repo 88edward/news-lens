@@ -275,9 +275,15 @@ def test_step7_sync모드가_브리핑을_만든다(analyzed_db, config_dir, fak
     assert json.loads(row["content"])["오늘의_3대_흐름"]
 
 
-def test_step7_batch모드는_제출하고_75로_끝낸다(analyzed_db, fake_client):
-    """models.yaml 기본이 batch 다. 제출과 수거가 다른 실행이어야 한다."""
-    assert config.role("daily_synthesis")["mode"] == "batch"
+def test_step7_batch모드는_제출하고_75로_끝낸다(analyzed_db, config_dir, fake_client):
+    """batch 로 두면 제출과 수거가 다른 실행이어야 한다.
+
+    기본값은 sync 다(하루 1회뿐이라 당일 브리핑을 위해). batch 경로도
+    살아 있어야 하므로 여기서 명시적으로 켜서 확인한다.
+    """
+    config_dir.patch(
+        "models", lambda d: d["roles"]["daily_synthesis"].update({"mode": "batch"})
+    )
     ids = [e["id"] for e in connect(analyzed_db).events_for(DATE, status="analyzed")]
     fake_client.responder = lambda req: valid_briefing_json(ids)
 
@@ -355,3 +361,39 @@ def test_step5부터_step7까지_전체가_돈다(clustered_db, config_dir, fake
 def test_step5_6_7_dry_run이_키_없이_돈다(clustered_db, fake_client):
     for module in (step5_submit_batch, step6_fetch_batch, step7_synthesize):
         assert run_step(module, clustered_db, "--dry-run") == 0, module.__name__
+
+
+def test_결과0건_배치는_사건을_되돌린다(clustered_db, fake_client):
+    """배치가 '완료'인데 결과가 비어 있을 수 있다 (원격 상태 유실 등).
+
+    그대로 닫으면 사건들이 submitted 로 영원히 남아 재제출도 분석도 안 된다.
+    증상은 '그날 사건이 통째로 비어 있다'로만 나타난다.
+    """
+    run_step(step5_submit_batch, clustered_db)
+    db = connect(clustered_db)
+    submitted = len(db.events_for(DATE, status="submitted"))
+    assert submitted > 0
+
+    # 원격이 결과를 못 주는 상황을 만든다
+    fake_client.batch_store.clear()
+    fake_client.clear_disk()
+
+    assert run_step(step6_fetch_batch, clustered_db) == 0
+
+    db = connect(clustered_db)
+    assert len(db.events_for(DATE, status="pending")) == submitted
+    assert db.events_for(DATE, status="submitted") == []
+    # 배치는 닫혀 다시 폴링되지 않는다
+    assert [r for r in db.open_batches() if r["role"] == "event_analysis"] == []
+
+
+def test_되돌린_사건은_다시_제출된다(clustered_db, fake_client):
+    run_step(step5_submit_batch, clustered_db)
+    fake_client.batch_store.clear()
+    fake_client.clear_disk()
+    run_step(step6_fetch_batch, clustered_db)
+
+    fake_client.responder = lambda req: valid_event_json()
+    assert run_step(step5_submit_batch, clustered_db) == 0
+    assert run_step(step6_fetch_batch, clustered_db) == 0
+    assert connect(clustered_db).events_for(DATE, status="analyzed")

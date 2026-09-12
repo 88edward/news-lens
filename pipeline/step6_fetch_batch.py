@@ -70,6 +70,20 @@ def run(args) -> int:
         if results.status is BatchStatus.FAILED:
             log(f"[step6] {batch_id} 배치 자체가 실패했다")
             db.set_batch_status(batch_id, "failed")
+            recovered = db.release_submitted(batch_id)
+            log(f"[step6] 사건 {recovered}건을 pending 으로 되돌린다 — 다음 step5 가 다시 제출한다")
+            continue
+
+        # 완료인데 결과가 하나도 없다. 여기서 'ended' 로 닫아 버리면 그 배치의
+        # 사건들은 submitted 상태로 영원히 남는다 — 재제출도, 분석도 되지 않고
+        # 사이트에서 조용히 사라진다. 실패로 보고 되돌린다.
+        if not results.items:
+            stranded = db.release_submitted(batch_id)
+            db.set_batch_status(batch_id, "failed")
+            log(
+                f"[step6] {batch_id} 가 결과 0건으로 끝났다. "
+                f"사건 {stranded}건을 pending 으로 되돌린다 — 다음 step5 가 다시 제출한다."
+            )
             continue
 
         for item in results.items:
