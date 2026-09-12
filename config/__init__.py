@@ -124,6 +124,7 @@ class Country:
     name_ko: str
     lat: float
     lng: float
+    name_en: str = ""
 
 
 def countries() -> list[Country]:
@@ -150,6 +151,7 @@ def countries() -> list[Country]:
                 iso2=row["iso2"].upper(),
                 fips=row["fips"].upper(),
                 name_ko=row["name_ko"],
+                name_en=row.get("name_en", ""),
                 lat=float(row["lat"]),
                 lng=float(row["lng"]),
             )
@@ -201,3 +203,50 @@ def known_fips() -> set[str]:
 
 def known_iso() -> set[str]:
     return set(_iso_index())
+
+
+def _name_index() -> dict[str, Country]:
+    """영문 국가명 → Country.
+
+    GDELT timelinesourcecountry 는 FIPS 코드가 아니라 영문 국가명을 시리즈
+    이름으로 돌려준다. 그 이름을 다시 FIPS 로 되돌리기 위한 인덱스다.
+    """
+    idx: dict[str, Country] = {}
+    for c in countries():
+        if c.name_en:
+            idx[_normalize_name(c.name_en)] = c
+    for alias, iso in NAME_ALIASES.items():
+        target = by_iso(iso)
+        if target is not None:
+            idx.setdefault(_normalize_name(alias), target)
+    return idx
+
+
+def _normalize_name(name: str) -> str:
+    return " ".join((name or "").lower().replace(".", "").split())
+
+
+#: GDELT 가 쓰는 다른 표기들. 여기 없는 이름은 조용히 버려지지 않고 경고가 찍힌다.
+NAME_ALIASES: dict[str, str] = {
+    "united states of america": "US",
+    "usa": "US",
+    "korea south": "KR",
+    "republic of korea": "KR",
+    "south korea": "KR",
+    "korea north": "KP",
+    "russian federation": "RU",
+    "united kingdom of great britain": "GB",
+    "britain": "GB",
+    "uk": "GB",
+    "czechia": "CZ",
+    "turkiye": "TR",
+    "viet nam": "VN",
+    "united arab emirates": "AE",
+    "hong kong sar": "HK",
+    "taiwan province of china": "TW",
+    "iran islamic republic of": "IR",
+}
+
+
+def by_name_en(name: str) -> Country | None:
+    return _name_index().get(_normalize_name(name))
