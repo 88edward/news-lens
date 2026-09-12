@@ -1,0 +1,202 @@
+name: analyze
+
+# 분석 — 하루 두 번, 서로 다른 실행으로 나뉜다.
+#
+#   submit   15:10 UTC = 00:10 KST   step2~step5. 배치를 제출하고 즉시 끝낸다.
+#   publish  19:10 UTC = 04:10 KST   step6~step8. 결과를 수거해 사이트를 굽는다.
+#
+# 왜 나누는가: Batch API 는 반값이지만 비동기다(통상 1~4h, 보장 24h).
+# 결과를 기다리며 러너를 켜두면 그 비용이 절감액을 넘는다.
+#
+# 한 워크플로에 크론이 둘이면 두 job 이 매번 다 돈다.
+# github.event.schedule 로 어느 크론이 깨웠는지 보고 갈라야 한다.
+#
+# 주의: GitHub Actions 는 YAML 앵커(&, *, <<)를 지원하지 않는다.
+# env 블록이 반복되는 건 그 때문이다. 줄이려다 파싱 에러를 내지 마라.
+on:
+  schedule:
+    - cron: '10 15 * * *'   # submit
+    - cron: '10 19 * * *'   # publish
+  workflow_dispatch:
+    inputs:
+      job:
+        description: '실행할 단계'
+        type: choice
+        options: [submit, publish, both]
+        default: both
+      dry_run:
+        description: 'dry-run 으로만 실행'
+        type: boolean
+        default: false
+
+concurrency:
+  group: analyze
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  deployments: write
+
+jobs:
+  # ── 00:10 KST — 필터·임베딩·클러스터링·배치 제출 ──────────────────
+  submit:
+    name: step2~5 제출
+    if: >-
+      github.event_name == 'schedule' && github.event.schedule == '10 15 * * *'
+      || github.event_name == 'workflow_dispatch'
+         && (inputs.job == 'submit' || inputs.job == 'both')
+    runs-on: ubuntu-latest
+    # 예상 소요: 6~10분 (임베딩 700건 + 클러스터링)
+    timeout-minutes: 45
+    env:
+      DRY: ${{ inputs.dry_run && '--dry-run' || '' }}
+      TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+      TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ vars.R2_BUCKET || 'news-lens' }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: step2 룰 필터
+        run: python -m pipeline.step2_filter --report $DRY
+
+      - name: step3 임베딩
+        run: python -m pipeline.step3_embed $DRY
+
+      - name: step4 클러스터링
+        run: python -m pipeline.step4_cluster --report $DRY
+
+      - name: step5 배치 제출
+        run: python -m pipeline.step5_submit_batch --report $DRY
+
+      - name: 실패하면 이슈를 만든다
+        if: failure()
+        uses: ./.github/actions/report-failure
+        with:
+          stage: submit
+          note: |
+            00:10 제출이 실패했다. 04:10 publish 는 수거할 배치가 없어
+            그대로 끝난다 — 그날 사이트가 갱신되지 않는다.
+
+            비용 상한(config/pipeline.yaml 의 max_daily_cost_usd) 초과로
+            중단된 것인지 로그의 `[cost]` 줄을 먼저 봐라.
+
+  # ── 04:10 KST — 배치 수거·종합·빌드·배포 ─────────────────────────
+  publish:
+    name: step6~8 수거와 배포
+    if: >-
+      github.event_name == 'schedule' && github.event.schedule == '10 19 * * *'
+      || github.event_name == 'workflow_dispatch'
+         && (inputs.job == 'publish' || inputs.job == 'both')
+    runs-on: ubuntu-latest
+    # 예상 소요: 5~70분 (배치가 아직이면 20분 간격으로 최대 3회 기다린다)
+    timeout-minutes: 90
+    env:
+      DRY: ${{ inputs.dry_run && '--dry-run' || '' }}
+      TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+      TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ vars.R2_BUCKET || 'news-lens' }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      # step6 은 배치가 아직이면 exit 75 로 끝낸다.
+      # 실패(1)와 대기(75)를 구분해야 한다 — 대기를 실패로 처리하면
+      # 매일 아침 가짜 이슈가 생기고, 반대면 진짜 실패를 놓친다.
+      - name: step6 배치 수거 (대기 시 20분 간격 3회 재시도)
+        id: fetch
+        run: |
+          set +e
+          for attempt in 1 2 3; do
+            echo "::group::step6 시도 $attempt/3"
+            python -m pipeline.step6_fetch_batch --report $DRY
+            code=$?
+            echo "::endgroup::"
+
+            if [ $code -eq 0 ]; then
+              echo "pending=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ $code -ne 75 ]; then
+              echo "::error::step6 이 exit $code 로 실패했다 (대기가 아니다)"
+              exit $code
+            fi
+
+            echo "배치가 아직 처리 중이다 (exit 75)."
+            if [ $attempt -lt 3 ]; then
+              echo "20분 뒤 다시 본다."
+              sleep 1200
+            fi
+          done
+          echo "::warning::3회 재시도 후에도 배치가 끝나지 않았다"
+          echo "pending=true" >> "$GITHUB_OUTPUT"
+          exit 75
+
+      - name: step7 일일 종합
+        if: steps.fetch.outputs.pending != 'true'
+        run: |
+          set +e
+          python -m pipeline.step7_synthesize --report $DRY
+          code=$?
+          # step7 도 batch 모드면 75 를 낼 수 있다. 브리핑이 없어도
+          # 사건 페이지는 구울 수 있으므로 빌드를 막지 않는다.
+          if [ $code -eq 75 ]; then
+            echo "::warning::일일 종합 배치가 아직 처리 중이다. 브리핑 없이 빌드한다."
+            exit 0
+          fi
+          exit $code
+
+      - name: step8 정적 사이트 빌드
+        if: steps.fetch.outputs.pending != 'true'
+        run: python -m pipeline.step8_build_site --report $DRY
+
+      - name: Cloudflare Pages 배포
+        if: steps.fetch.outputs.pending != 'true' && inputs.dry_run != true
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.R2_ACCOUNT_ID }}
+          command: pages deploy site/dist --project-name=news-lens
+
+      - name: 실패하면 이슈를 만든다
+        # 3회 재시도 후에도 대기 중(75)이면 여기로 온다. 그것도 알아야 한다.
+        if: failure()
+        uses: ./.github/actions/report-failure
+        with:
+          stage: publish
+          note: |
+            04:10 수거/배포가 실패했다.
+
+            step6 이 exit 75 로 끝났다면 배치가 아직 처리 중인 것이다.
+            Batch API 보장 상한은 24시간이므로 오늘 안에 끝날 가능성이 높다.
+            워크플로를 수동 실행(job=publish)해 다시 수거해 봐라.
+
+            그 외 exit code 는 진짜 실패다. 스키마 검증 실패율이 높으면
+            `SELECT id, raw_response FROM events WHERE schema_ok = 0` 을 보고
+            prompts/01_event_analysis.md 를 고쳐라.

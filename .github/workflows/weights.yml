@@ -1,0 +1,60 @@
+name: weights
+
+# 국가 관심도 가중치 — 주 1회.
+# 18:00 UTC 일요일 = 월요일 03:00 KST.
+# 이 결과가 collect 의 예산 배분을 결정한다. 실패하면 지난주 값이 계속 쓰인다.
+on:
+  schedule:
+    - cron: '0 18 * * 0'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'dry-run 으로만 실행'
+        type: boolean
+        default: false
+
+concurrency:
+  group: weights
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  weights:
+    name: step0 국가 가중치
+    runs-on: ubuntu-latest
+    # 예상 소요: 2~3분 (GDELT 요청 1회 + DB 쓰기)
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: step0 국가 가중치 계산
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          python -m pipeline.step0_weights --report \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: 실패하면 이슈를 만든다
+        # 크론은 조용히 죽는다. 공통 처리는 .github/actions/report-failure 에 있다.
+        if: failure()
+        uses: ./.github/actions/report-failure
+        with:
+          stage: weights
+          note: |
+            주간 가중치 갱신이 실패했다.
+
+            가중치가 갱신되지 않으면 step1 은 지난주 값으로 계속 수집한다.
+            수집 자체는 멈추지 않으므로 급하지는 않지만, 2주 이상 방치하면
+            급등(surge) 신호가 무의미해진다.

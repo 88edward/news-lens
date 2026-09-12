@@ -46,12 +46,17 @@ def _clean_registry():
 
 
 @pytest.fixture
-def fake_client():
-    """fake provider 를 등록하고 클래스 상태를 초기화한다."""
+def fake_client(tmp_path, monkeypatch):
+    """fake provider 를 등록하고 클래스 상태를 초기화한다.
+
+    제출한 배치를 디스크에 남기므로(프로세스가 달라도 수거되도록) 저장 위치를
+    tmp 로 돌려 레포를 더럽히지 않게 한다.
+    """
     from llm import registry
 
     from .fake_provider import FakeClient
 
+    monkeypatch.setenv("NEWS_LENS_FAKE_DIR", str(tmp_path / "fake-batches"))
     FakeClient.reset()
     registry.register(FakeClient)
     yield FakeClient

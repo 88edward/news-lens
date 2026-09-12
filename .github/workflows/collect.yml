@@ -1,0 +1,65 @@
+name: collect
+
+# 수집 — 6시간마다.
+#
+# 왜 하루 1회가 아닌가: RSS 는 최신 N건만 노출한다. 하루 한 번 폴링하면
+# 발행량이 많은 매체의 기사를 통째로 놓친다. GDELT 도 timespan=6h 로 맞춰 둔다.
+# 수집은 API 호출뿐이라 2분이면 끝난다.
+on:
+  schedule:
+    - cron: '5 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'dry-run 으로만 실행'
+        type: boolean
+        default: false
+
+concurrency:
+  group: collect
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  collect:
+    name: step1 수집
+    runs-on: ubuntu-latest
+    # 예상 소요: 2~4분 (국가 25개 × 쿼리 1~2회)
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: step1 수집
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ vars.R2_BUCKET || 'news-lens' }}
+        run: |
+          python -m pipeline.step1_collect --report \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
+
+      - name: 실패하면 이슈를 만든다
+        # 크론은 조용히 죽는다. 공통 처리는 .github/actions/report-failure 에 있다.
+        if: failure()
+        uses: ./.github/actions/report-failure
+        with:
+          stage: collect
+          note: |
+            수집이 실패했다. 그날 분석할 사건이 없어진다.
+
+            자주 보는 원인: GDELT 응답 형식 변경, R2 자격증명 만료,
+            country_weights 가 비어 있음(step0 미실행).
