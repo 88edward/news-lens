@@ -220,3 +220,77 @@ def test_보관기간은_설정에서_온다(populated, config_dir):
     )
     step9_prune.main(["--db", str(populated), "--date", DATE])
     assert connect(populated).query("SELECT * FROM embeddings"), "설정을 무시했다"
+
+
+# ── 디스크 정리 ─────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def blob_dir(tmp_path, monkeypatch):
+    from store.blobs import BlobStore
+
+    return BlobStore(local_only=True, local_dir=tmp_path / "data")
+
+
+def test_원문_경로가_중복되지_않는다(blob_dir):
+    """local_dir 이 raw 로 끝나면 data/raw/raw/... 가 된다."""
+    from store.blobs import blob_key
+
+    path = blob_dir._local_path(blob_key("2026-09-12"))
+    assert "raw" in str(path)
+    assert str(path).count("raw") == 1, path
+
+
+def test_오래된_원문_파일을_지운다(blob_dir):
+    """이걸 안 지우면 디스크가 조용히 차오른다."""
+    from datetime import date, timedelta
+
+    old = (date.today() - timedelta(days=200)).isoformat()
+    recent = (date.today() - timedelta(days=3)).isoformat()
+    blob_dir.append_day(old, [{"id": "a", "title": "옛날 기사"}])
+    blob_dir.append_day(recent, [{"id": "b", "title": "최근 기사"}])
+    assert blob_dir.usage()[0] == 2
+
+    removed, freed = blob_dir.prune(90)
+    assert removed == 1 and freed > 0
+    assert blob_dir.usage()[0] == 1
+    assert list(blob_dir.read_day(recent)), "최근 것은 남아야 한다"
+    assert list(blob_dir.read_day(old)) == []
+
+
+def test_원문_정리_dry_run은_지우지_않는다(blob_dir):
+    from datetime import date, timedelta
+
+    old = (date.today() - timedelta(days=200)).isoformat()
+    blob_dir.append_day(old, [{"id": "a"}])
+    removed, _ = blob_dir.prune(90, dry_run=True)
+    assert removed == 1
+    assert blob_dir.usage()[0] == 1, "dry-run 인데 지웠다"
+
+
+def test_오프라인_배치_파일이_정리된다(tmp_path, monkeypatch):
+    import os
+    import time
+
+    from llm.fake_client import prune_batches
+
+    monkeypatch.setenv("NEWS_LENS_FAKE_DIR", str(tmp_path / "fake"))
+    (tmp_path / "fake").mkdir(parents=True, exist_ok=True)
+    old = tmp_path / "fake" / "fake_batch_old_001.json"
+    old.write_text("[]", encoding="utf-8")
+    os.utime(old, (time.time() - 10 * 86400,) * 2)
+    new = tmp_path / "fake" / "fake_batch_new_002.json"
+    new.write_text("[]", encoding="utf-8")
+
+    removed, _ = prune_batches(days=2)
+    assert removed == 1
+    assert new.exists() and not old.exists()
+
+
+def test_step9가_디스크도_정리한다(populated, config_dir, tmp_path, monkeypatch, capsys):
+    """DB 만 정리하고 파일을 놔두면 반쪽짜리다."""
+    monkeypatch.setattr("store.blobs.LOCAL_DIR", tmp_path / "data")
+    step9_prune.main(["--db", str(populated), "--date", DATE, "--report"])
+    out = capsys.readouterr().out
+    assert "디스크 정리" in out
+    assert "원문 파일" in out

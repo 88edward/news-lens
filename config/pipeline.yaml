@@ -33,7 +33,7 @@ batch:
 
 retention:
   # DB 를 레포에 커밋하므로 크기를 직접 관리해야 한다. step9_prune 이 쓴다.
-  raw_blob_days: 90
+  raw_blob_days: 90              # data/raw/ 의 원문 gzip. step9_prune 이 지운다
   static_build_days: 30          # 이 기간만 정적으로 굽는다
   weights_history_days: 365
   article_days: 14               # 기사 원본 행은 이만큼만 남긴다

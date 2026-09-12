@@ -15,7 +15,9 @@ from pathlib import Path
 from typing import Iterable, Iterator
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-LOCAL_DIR = REPO_ROOT / "data" / "raw"
+# blob_key() 가 이미 "raw/..." 로 시작한다. 여기에 raw 를 또 붙이면
+# data/raw/raw/2026/... 이 된다.
+LOCAL_DIR = REPO_ROOT / "data"
 
 
 def blob_key(date: str) -> str:
@@ -105,6 +107,56 @@ class BlobStore:
         return iter(
             [json.loads(line) for line in text.splitlines() if line.strip()]
         )
+
+    # ── 정리 ──────────────────────────────────────────────────────────
+
+    def prune(self, days: int, *, dry_run: bool = False) -> tuple[int, int]:
+        """days 보다 오래된 하루치 파일을 지운다. (파일 수, 바이트) 를 돌려준다.
+
+        이걸 돌리지 않으면 원문 아카이브가 무한히 쌓인다. 로컬에서 계속
+        돌리는 경우 디스크가 조용히 차오르는 유일한 경로다.
+
+        R2 를 쓰는 경우에는 버킷의 객체 수명주기 규칙(lifecycle)을 거는 편이
+        낫다 — 여기서 지우면 매일 LIST/DELETE 요청이 든다.
+        """
+        from datetime import date as date_cls
+        from datetime import timedelta
+
+        if not self.local_only:
+            print(
+                "[blobs] R2 는 버킷 수명주기 규칙으로 정리해라. 여기서는 건너뛴다.",
+                file=sys.stderr,
+            )
+            return (0, 0)
+
+        cutoff = date_cls.today() - timedelta(days=max(0, days))
+        removed = 0
+        freed = 0
+        root = self.local_dir / "raw"
+        if not root.exists():
+            return (0, 0)
+
+        for path in sorted(root.rglob("*.jsonl.gz")):
+            try:
+                stamp = date_cls.fromisoformat(path.stem.replace(".jsonl", ""))
+            except ValueError:
+                continue
+            if stamp >= cutoff:
+                continue
+            size = path.stat().st_size
+            if not dry_run:
+                path.unlink(missing_ok=True)
+            removed += 1
+            freed += size
+        return (removed, freed)
+
+    def usage(self) -> tuple[int, int]:
+        """(파일 수, 총 바이트). --report 가 쓴다."""
+        root = self.local_dir / "raw"
+        if not self.local_only or not root.exists():
+            return (0, 0)
+        files = list(root.rglob("*.jsonl.gz"))
+        return (len(files), sum(f.stat().st_size for f in files))
 
 
 def store(**kwargs) -> BlobStore:

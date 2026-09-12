@@ -251,6 +251,21 @@ db-commit   →  news-lens.db  →  data/news-lens.sql  →  git push
 | 사건 헤드라인·논조 | 영구 | 목록과 글로브가 쓴다 |
 | 브리핑·가중치 | 영구 / 365일 | 작다 |
 
+`step9_prune` 은 DB 밖도 정리한다: `data/raw/` 의 원문 gzip(90일),
+오프라인 배치 파일. 이걸 안 지우면 로컬에서 반복 실행할 때 디스크가
+조용히 차오른다.
+
+**실측 증가율** (하루 1,000건·사건 180개를 30일 반복):
+
+| | |
+|---|---|
+| 기사 행 | 14일치 15,000행에서 **멈춘다** |
+| 덤프 크기 | 30일차 10.2 MB |
+| 14일 이후 증가 | **하루 224 KB** (연 약 80 MB) |
+| git 히스토리 | 텍스트라 델타가 잘 잡힌다 — 커밋당 수 KB 수준 |
+
+60일이 지나면 오래된 사건의 분석 전문이 비워져 증가율이 더 떨어진다.
+
 `python -m store.dump size` 가 현재 덤프 크기를 알려준다.
 50MB를 넘으면 경고가 뜬다 — 그때가 외부 DB로 옮길 때다.
 
@@ -336,6 +351,32 @@ SELECT date, fips, weight, surge_raw FROM country_weights ORDER BY date DESC;
 
 품질안(사건 분석을 Claude Haiku 4.5 로)으로 올리면 Anthropic 계정이 추가되고
 월 $21.60 이 된다.
+
+---
+
+## 내 컴퓨터에는 무엇이 쌓이나
+
+**GitHub Actions 로 돌리는 경우 — 아무것도 쌓이지 않는다.** 러너는 GitHub 쪽에서
+뜨고 실행이 끝나면 사라진다. 내려받는 것은 `git pull` 할 때의 레포뿐이다.
+
+**로컬에서 돌리는 경우** 아래가 생긴다. 전부 `data/` 와 `site/dist/` 안이고,
+`data/news-lens.sql` 을 뺀 나머지는 gitignore 돼 있다.
+
+| 경로 | 무엇 | 정리 |
+|---|---|---|
+| `news-lens.db` | SQLite 작업 파일 | `step9_prune` |
+| `data/news-lens.sql` | 상태 덤프 (레포에 커밋되는 유일한 것) | `step9_prune` |
+| `data/raw/` | 원문 gzip | `step9_prune` (90일) |
+| `data/fake-batches/` | 오프라인 배치 파일 | `step9_prune` |
+| `site/dist/` | 빌드 산출물 | 빌드마다 통째로 교체 |
+
+전부 지워도 안전하다. 다음 실행이 다시 만든다 — 단, `data/news-lens.sql` 을
+지우면 수집한 기사와 분석한 사건이 함께 사라진다.
+
+```bash
+python -m pipeline.step9_prune --report      # 무엇이 얼마나 있는지 + 정리
+python -m store.dump size                    # 덤프 크기만 확인
+```
 
 ---
 

@@ -10,6 +10,10 @@ DB 를 레포에 커밋하는 구성에서는 크기가 곧 레포 크기다. �
   - 사건 분석 JSON 전문: retention.analysis_days 이후 비운다.
     전문은 이미 정적 페이지에 구워져 있고, 헤드라인·논조·카테고리는 남긴다.
 
+DB 밖에서도 정리한다:
+  - data/raw/ 의 원문 gzip 파일: retention.raw_blob_days 이후.
+  - data/fake-batches/ 의 오프라인 배치 파일: 수거가 끝났으면 필요 없다.
+
 무엇을 남기는가: events(슬림), briefings, country_weights, runs.
 이게 이 서비스의 실제 산출물이고, 행당 크기가 작다.
 
@@ -101,6 +105,33 @@ def count_sql(sql: str) -> str:
     return f"SELECT COUNT(*) AS n FROM {tablename} WHERE {where}"
 
 
+def prune_disk(args) -> list[list[str]]:
+    """DB 밖에 쌓이는 것들. 이걸 안 지우면 디스크가 조용히 차오른다."""
+    from store.blobs import BlobStore
+
+    rows = []
+    retention = config.pipeline().get("retention") or {}
+
+    blobs = BlobStore()
+    removed, freed = blobs.prune(
+        int(retention.get("raw_blob_days", 90)), dry_run=args.dry_run
+    )
+    rows.append(
+        [f"원문 파일 ({retention.get('raw_blob_days', 90)}일 이전)",
+         f"{removed}개 / {freed / 1024 / 1024:.1f}MB"]
+    )
+    files, total = blobs.usage()
+    rows.append(["원문 파일 (남은 것)", f"{files}개 / {total / 1024 / 1024:.1f}MB"])
+
+    # 오프라인 배치 파일. 운영(진짜 API)에서는 생기지 않는다.
+    from llm.fake_client import prune_batches
+
+    n, size = prune_batches(dry_run=args.dry_run)
+    if n:
+        rows.append(["오프라인 배치 파일", f"{n}개 / {size / 1024:.0f}KB"])
+    return rows
+
+
 def run(args) -> int:
     today = args.date or utc_today()
     db = connect(args.db)
@@ -113,6 +144,8 @@ def run(args) -> int:
             db.execute(sql, params)
         rows.append([label, str(n)])
 
+    disk_rows = prune_disk(args)
+
     if args.dry_run:
         log("[step9] dry-run — 아무것도 지우지 않는다")
     else:
@@ -122,21 +155,23 @@ def run(args) -> int:
             db.conn.isolation_level = None
             db.execute("VACUUM")
             db.conn.isolation_level = ""
-        log(f"[step9] 정리 완료 · 총 {sum(int(r[1]) for r in rows)}행")
+        log(f"[step9] 정리 완료 · DB {sum(int(r[1]) for r in rows)}행")
 
     if args.report:
-        print(report(rows, today))
+        print(report(rows, disk_rows, today))
 
     db.close()
     return EXIT_OK
 
 
-def report(rows, today: str) -> str:
+def report(rows, disk_rows, today: str) -> str:
     from store.dump import size_report
 
     return (
         f"DB 정리 ({today})\n"
         + table(rows, ["대상", "행 수"])
+        + "\n\n디스크 정리\n"
+        + table(disk_rows, ["대상", "크기"])
         + "\n\n"
         + size_report()
     )

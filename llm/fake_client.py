@@ -265,3 +265,24 @@ def _sample(schema: dict, *, seed: str = "", event_ids: list[str] | None = None)
         text += " 이 문장은 스키마의 최소 길이를 채우기 위한 자리표시자다."
     maximum = schema.get("maxLength")
     return text[:maximum] if maximum else text
+
+
+def prune_batches(*, days: int = 2, dry_run: bool = False) -> tuple[int, int]:
+    """오프라인 배치 파일 정리. (파일 수, 바이트)
+
+    오프라인으로 계속 돌리면 step5 가 제출할 때마다 파일이 하나씩 쌓인다.
+    운영(진짜 API)에서는 생기지 않지만, 로컬에서 반복 실행하면 무한히 는다.
+    """
+    import time
+
+    cutoff = time.time() - days * 86400
+    removed = 0
+    freed = 0
+    for path in _store_dir().glob("fake_batch_*.json"):
+        if path.stat().st_mtime >= cutoff:
+            continue
+        freed += path.stat().st_size
+        if not dry_run:
+            path.unlink(missing_ok=True)
+        removed += 1
+    return (removed, freed)
