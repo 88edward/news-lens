@@ -46,6 +46,17 @@ retention:
 site:
   base_url: "https://news-lens.pages.dev"
   timezone: "Asia/Seoul"
+  deploy:
+    # Cloudflare Pages 프로젝트 이름. wrangler --project-name 에 그대로 쓴다.
+    project_name: news-lens
+    production_branch: main
+    # 프리뷰 배포의 기본 브랜치 이름. 프로덕션 URL 을 건드리지 않는다.
+    preview_branch: preview
+    # 빌드 산출물에 이 문자열이 있으면 샘플 데이터다 → 프로덕션 배포를 막는다.
+    sample_markers:
+      - example-news-
+      - 오프라인 표본 응답
+
   globe:
     ring_surge_threshold: 1.8
     max_rings: 3

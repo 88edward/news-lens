@@ -31,6 +31,8 @@
 
 `site/dist` 는 순수 정적 파일이다 — 빌드 단계도 서버도 없다.
 `pages deploy` 와 `wrangler deploy`(Workers, `site/worker/` 용)를 섞지 마라.
+손으로 올릴 때는 `scripts/deploy.py` 를 거친다 — 두 명령을 한 군데로 모으고,
+샘플 데이터가 프로덕션으로 가는 것을 막는다. 기본은 프리뷰다.
 
 계정을 늘리는 선택(Anthropic, Cloudflare R2/Workers, Turso)은 전부 **선택**이고
 설정 파일에서만 켠다.

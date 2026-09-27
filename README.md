@@ -365,6 +365,46 @@ SELECT date, fips, weight, surge_raw FROM country_weights ORDER BY date DESC;
 
 ---
 
+## 손으로 배포하기
+
+자동 배포(매일 04:10)와 별개로, 언제든 직접 올릴 수 있다.
+
+```bash
+npm install -g wrangler
+wrangler login
+wrangler pages project create news-lens --production-branch=main   # 최초 1회
+```
+
+프로젝트를 미리 만들어 두지 않으면 CI 가 대화형 프롬프트를 띄울 수 없어 실패한다.
+
+배포는 `scripts/deploy.py` 를 거친다. 이 레포는 배포 대상이 둘이고 명령이
+서로 다르기 때문이다 — 섞으면 조용히 엉뚱한 곳에 올라간다.
+
+| 대상 | wrangler 명령 |
+|---|---|
+| `site/dist/` 정적 사이트 | `pages deploy` |
+| `site/worker/` 검색 API (선택) | `deploy` |
+
+```bash
+python -m scripts.deploy                    # 프리뷰 (기본)
+python -m scripts.deploy --build            # 빌드부터 다시
+python -m scripts.deploy --branch demo      # 임의 이름의 프리뷰
+python -m scripts.deploy --production       # 프로덕션
+python -m scripts.deploy --worker           # Worker (D1 필요)
+python -m scripts.deploy --dry-run          # 명령만 확인
+```
+
+**기본이 프리뷰인 이유**는 여러 번 시험 배포하는 게 정상 작업이기 때문이다.
+프리뷰는 `https://<브랜치>.news-lens.pages.dev` 로 따로 올라가고 실서비스를
+건드리지 않는다. 브랜치 이름만 바꿔 가며 몇 번이든 올려도 된다.
+
+**프로덕션 배포는 샘플 데이터가 섞여 있으면 거부한다.**
+`--from-fixtures` 빌드는 구조가 진짜와 똑같아서 눈으로 구분되지 않는다.
+탐지 문자열은 `config/pipeline.yaml` 의 `site.deploy.sample_markers` 에 있다.
+알면서 올릴 때만 `--allow-sample` 을 붙인다.
+
+---
+
 ## 내 컴퓨터에는 무엇이 쌓이나
 
 **GitHub Actions 로 돌리는 경우 — 아무것도 쌓이지 않는다.** 러너는 GitHub 쪽에서
@@ -442,5 +482,6 @@ site/       templates(Jinja2) · static(globe.gl) · dist(gitignore, 배포 대�
             worker/ 는 선택 — Cloudflare Workers 검색 API. 기본 구성에선 안 쓴다
             dist 는 `pages deploy`, worker 는 `wrangler deploy`. 섞지 마라
 data/       news-lens.sql 만 커밋된다. 이게 파이프라인의 상태다
+scripts/    운영 도구. deploy.py 가 Pages/Worker 배포를 한 군데로 모은다
 tests/      fixtures 200건 + fake provider. 실제 API를 호출하지 않는다
 ```
