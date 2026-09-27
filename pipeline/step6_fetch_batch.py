@@ -45,7 +45,7 @@ def run(args) -> int:
 
     client = get_client(ROLE)
     schema = config.schema_for(ROLE)
-    ledger = cost.ledger(db=db)
+    ledger = cost.ledger(db=db, day=date)
 
     pending: list[str] = []
     stored = 0

@@ -239,27 +239,45 @@ def test_재시도가_다_실패하면_빌드를_건너뛴다():
     for step in job["steps"]:
         run = step.get("run", "")
         uses = str(step.get("uses", ""))
-        if "step8_build_site" in run or "deploy-pages" in uses or "upload-pages" in uses:
+        if "step8_build_site" in run or "wrangler-action" in uses:
             assert "steps.fetch.outputs.pending != 'true'" in step["if"]
 
 
-def test_GitHub_Pages로_배포한다():
-    """Cloudflare 계정 없이 배포한다 — 레포만 있으면 된다."""
+def deploy_step() -> dict:
+    return next(
+        s
+        for s in load("analyze")["jobs"]["publish"]["steps"]
+        if "wrangler-action" in str(s.get("uses", ""))
+    )
+
+
+def test_Cloudflare_Pages로_배포한다():
     wf = load("analyze")
+    step = deploy_step()
+    assert step["uses"].startswith("cloudflare/wrangler-action@v")
+    assert wf["permissions"]["deployments"] == "write"
+
     uses = [s.get("uses", "") for s in wf["jobs"]["publish"]["steps"]]
-    assert any("actions/upload-pages-artifact" in u for u in uses)
-    assert any("actions/deploy-pages" in u for u in uses)
-    assert not any("wrangler" in u for u in uses), "Cloudflare 의존이 남아 있다"
-    assert wf["permissions"]["pages"] == "write"
-    assert wf["permissions"]["id-token"] == "write"
+    assert not any("deploy-pages" in u for u in uses), "GitHub Pages 잔재가 남아 있다"
+    assert "pages" not in wf["permissions"], "Pages 권한이 남아 있다"
+
+
+def test_Pages_배포이지_Worker_배포가_아니다():
+    """`wrangler deploy` 는 Workers 용이다. site/worker/ 와 섞으면 사이트가 안 올라간다."""
+    command = deploy_step()["with"]["command"]
+    assert command.startswith("pages deploy "), command
+    assert "site/dist" in command, "빌드 산출물 디렉토리를 올려야 한다"
+    assert "--project-name=" in command
+
+
+def test_배포에_필요한_시크릿을_넘긴다():
+    with_ = deploy_step()["with"]
+    assert "secrets.CLOUDFLARE_API_TOKEN" in with_["apiToken"]
+    assert "secrets.CLOUDFLARE_ACCOUNT_ID" in with_["accountId"]
 
 
 def test_배포는_dry_run에서_돌지_않는다():
-    job = load("analyze")["jobs"]["publish"]
-    deploy = next(
-        s for s in job["steps"] if "actions/deploy-pages" in str(s.get("uses", ""))
-    )
-    assert "inputs.dry_run != true" in deploy["if"]
+    assert "inputs.dry_run != true" in deploy_step()["if"]
 
 
 def test_publish가_DB를_정리한다():
@@ -285,14 +303,22 @@ def test_필수_시크릿은_Gemini_하나다():
     assert "GEMINI_API_KEY" in required_block
     assert "ANTHROPIC_API_KEY" not in required_block
     assert "TURSO" not in example, "Turso 는 구현돼 있지 않다. 적어 두면 거짓말이 된다"
+    # 배포에 실제로 필요한 것은 필수 구역에 있어야 한다
+    assert "CLOUDFLARE_API_TOKEN" in required_block
+    assert "CLOUDFLARE_ACCOUNT_ID" in required_block
+
+
+#: GitHub Actions 가 자동으로 넣어 주는 것. 사용자가 등록할 항목이 아니다.
+BUILTIN_SECRETS = {"GITHUB_TOKEN"}
 
 
 def test_참조하는_시크릿이_전부_env_example에_있다():
+    """워크플로가 요구하는데 문서에 없으면, 켜 봐야 이유도 모르고 실패한다."""
     example = (ROOT / ".env.example").read_text(encoding="utf-8")
     referenced = set()
     for name in WORKFLOWS:
         referenced |= set(re.findall(r"secrets\.([A-Z0-9_]+)", raw(name)))
-    missing = {s for s in referenced if s not in example}
+    missing = {s for s in referenced - BUILTIN_SECRETS if s not in example}
     assert not missing, f".env.example 에 없는 시크릿: {missing}"
 
 

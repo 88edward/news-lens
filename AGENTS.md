@@ -15,7 +15,7 @@
 | LLM 호출 | 사건 단위 180회/일 + 종합 1회/일 |
 | LLM 예산 | **월 $25 이내** (기본 설정은 월 $4 수준) |
 | 인프라 | 무료 티어만 사용 |
-| 필요한 계정 | **GitHub · Google AI Studio · Cloudflare 세 곳** (전부 무료 티어) |
+| 필요한 계정 | **GitHub + Google AI Studio 두 곳뿐** |
 
 **절대 규칙: 기사 1건마다 LLM을 호출하지 않는다.** 임베딩으로 같은 사건을 묶은 뒤
 사건 단위로만 호출한다. 기사 단위로 호출하면 비용이 5배가 된다.
@@ -25,15 +25,12 @@
 - 파이프라인: Python 3.12
 - 스케줄러: GitHub Actions 크론 3개
 - 저장: SQLite 한 파일. 레포에 **SQL 텍스트 덤프**로 커밋해 실행 간 상태를 잇는다
-- 배포: Cloudflare Pages (`wrangler pages deploy site/dist`)
+- 배포: GitHub Pages
 - 프론트: globe.gl (three.js 기반)
 - LLM: Gemini 하나 (임베딩·분석·종합 전부)
 
-`site/dist` 는 순수 정적 파일이다 — 빌드 단계도 서버도 없다.
-`pages deploy` 와 `wrangler deploy`(Workers, `site/worker/` 용)를 섞지 마라.
-
 계정을 늘리는 선택(Anthropic, Cloudflare R2/Workers, Turso)은 전부 **선택**이고
-설정 파일에서만 켠다.
+설정 파일에서만 켠다. 기본 경로는 가입할 곳이 두 곳이다.
 
 ## 프로젝트 규칙
 
@@ -41,7 +38,7 @@
 
 - **모델 ID와 프롬프트 문구를 코드에 하드코딩 금지.**
   모델은 `config/models.yaml`, 지시문은 `prompts/*.md` 에만 둔다.
-  파이썬 파일 안에 `"claude-..."` 같은 문자열이 나타나면 그 자체로 규칙 위반이다.
+  파이썬 파일 안에 `"Codex-..."` 같은 문자열이 나타나면 그 자체로 규칙 위반이다.
 - 임계값·상한·기간 같은 숫자도 코드에 박지 않는다. `config/pipeline.yaml` 에서 읽는다.
 
 ### LLM 접근
@@ -126,14 +123,12 @@
 
 1. `models.yaml` 의 `event_analysis.provider` 를 `anthropic` → `gemini` 로 한 줄
    바꿨을 때, 파이썬 코드를 한 줄도 안 고치고 테스트가 통과한다.
-2. `grep -rn "claude-\|gpt-\|gemini-" pipeline/ weights/ store/ site/` 가 비어 있다.
+2. `grep -rn "Codex-\|gpt-\|gemini-" pipeline/ weights/ store/ site/` 가 비어 있다.
 3. `grep -rn "^import anthropic\|^import openai\|^from anthropic\|^from openai" pipeline/` 이 비어 있다.
 4. 모든 step이 API 키 없이 `--dry-run` 으로 돈다.
 5. `pytest` 가 실제 네트워크 호출 없이 통과한다.
 6. 모든 워크플로 job이 `db-restore` 로 시작하고 `db-commit` 으로 끝난다.
    하나라도 빠지면 그 실행의 결과가 사라진다.
-7. 워크플로가 참조하는 시크릿이 전부 `.env.example` 에 있다
-   (GitHub 이 자동 제공하는 `GITHUB_TOKEN` 은 예외).
+7. `.env.example` 의 필수 항목이 하나(`GEMINI_API_KEY`)뿐이다.
    문서에 없는 서비스를 코드가 요구하거나, 구현하지 않은 서비스를
-   문서가 약속하면 안 된다. 현재 필수는 `GEMINI_API_KEY` 와
-   `CLOUDFLARE_API_TOKEN` · `CLOUDFLARE_ACCOUNT_ID` 세 개다.
+   문서가 약속하면 안 된다.

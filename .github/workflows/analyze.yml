@@ -34,10 +34,9 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write     # DB 덤프 커밋
+  contents: write      # DB 덤프 커밋
   issues: write
-  pages: write        # GitHub Pages 배포
-  id-token: write
+  deployments: write   # wrangler-action 의 배포 상태 기록
 
 jobs:
   # ── 00:10 KST — 필터·임베딩·클러스터링·배치 제출 ──────────────────
@@ -107,9 +106,6 @@ jobs:
     runs-on: ubuntu-latest
     # 예상 소요: 5~70분 (배치가 아직이면 20분 간격으로 최대 3회 기다린다)
     timeout-minutes: 90
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     env:
       DRY: ${{ inputs.dry_run && '--dry-run' || '' }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -189,21 +185,21 @@ jobs:
         with:
           message: step6~9 분석과 정리
 
-      # ── GitHub Pages 배포 (Cloudflare 계정이 필요 없다) ──────────
-      - name: Pages 설정
-        if: steps.fetch.outputs.pending != 'true' && inputs.dry_run != true
-        uses: actions/configure-pages@v5
-
-      - name: 산출물 업로드
-        if: steps.fetch.outputs.pending != 'true' && inputs.dry_run != true
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: site/dist
-
-      - name: Pages 배포
+      # ── Cloudflare Pages 배포 ────────────────────────────────────
+      # site/dist 는 순수 정적 파일이다(HTML 85 + JSON 23 + js/css/jpg).
+      # 빌드 단계도 서버도 없다 — 디렉토리를 그대로 올린다.
+      #
+      # `pages deploy` 다. `wrangler deploy` 는 Workers 용이고,
+      # site/worker/ 를 올릴 때만 쓴다 — 이 사이트와 섞지 마라.
+      - name: Cloudflare Pages 배포
         id: deploy
         if: steps.fetch.outputs.pending != 'true' && inputs.dry_run != true
-        uses: actions/deploy-pages@v4
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          command: pages deploy site/dist --project-name=news-lens
 
       - name: 실패하면 이슈를 만든다
         # 3회 재시도 후에도 대기 중(75)이면 여기로 온다. 그것도 알아야 한다.

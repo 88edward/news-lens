@@ -134,3 +134,33 @@ def test_원장은_db에_기록을_넘긴다(config_dir):
     ledger.record("event_analysis", Usage(input_tokens=100, output_tokens=10, batch=True))
     assert calls and calls[0]["role"] == "event_analysis"
     assert calls[0]["cost_usd"] > 0
+
+
+def test_원장이_파이프라인_날짜로_기록한다(config_dir):
+    """date.today() 로 두면 runs 가 두 날짜로 갈라진다.
+
+    step5/step7 은 파이프라인 --date 로 record_run 하는데 원장만 실행 시각의
+    날짜를 쓰면, 자정을 넘겨 도는 실행이나 과거 날짜 재처리에서
+    일일 상한이 엉뚱한 날에 걸리고 비용 집계가 비어 보인다.
+    """
+    written = []
+
+    class FakeDB:
+        def spent_today(self, day):
+            written.append(("read", day))
+            return 0.0
+
+        def record_run(self, **kw):
+            written.append(("write", kw["day"]))
+
+    led = cost.ledger(db=FakeDB(), day="2026-09-12")
+    led.record("event_analysis", Usage(input_tokens=100, output_tokens=10, batch=True))
+
+    assert led.day.isoformat() == "2026-09-12"
+    assert all(day == "2026-09-12" for _, day in written), written
+
+
+def test_원장의_날짜는_문자열로도_받는다(config_dir):
+    """step 들은 --date 를 문자열로 들고 있다. 매번 변환하게 하면 빠뜨린다."""
+    led = cost.ledger(day="2026-01-05")
+    assert led.day.isoformat() == "2026-01-05"

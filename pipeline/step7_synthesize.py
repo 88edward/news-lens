@@ -82,7 +82,7 @@ def run(args) -> int:
     schema = config.schema_for(ROLE)
     known_ids = {e["id"] for e in events}
 
-    ledger = cost.ledger(db=db)
+    ledger = cost.ledger(db=db, day=date)
     ledger.preflight(
         ROLE,
         in_tokens=(len(system) + len(user)) // 4,

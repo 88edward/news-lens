@@ -86,7 +86,7 @@ def run(args) -> int:
 
     # 비용은 부르기 전에 찍고, 상한을 넘으면 여기서 멈춘다.
     avg_in = sum(len(r.system) + len(r.user) for r in requests) // (4 * len(requests))
-    ledger = cost.ledger(db=db)
+    ledger = cost.ledger(db=db, day=date)
     ledger.preflight(
         ROLE,
         in_tokens=avg_in,

@@ -191,9 +191,17 @@ class Ledger:
 _default_ledger: Ledger | None = None
 
 
-def ledger(db: object | None = None, day: date | None = None) -> Ledger:
-    """프로세스 하나가 공유하는 기본 원장."""
+def ledger(db: object | None = None, day: date | str | None = None) -> Ledger:
+    """프로세스 하나가 공유하는 기본 원장.
+
+    day 는 **파이프라인의 기준 날짜**(--date)를 넘겨라. date.today() 로 두면
+    runs 테이블이 두 날짜로 갈라진다 — step5/step7 은 파이프라인 날짜로,
+    원장은 실행 시각의 날짜로 쓰기 때문이다. 자정을 넘겨 도는 실행이나
+    과거 날짜 재처리에서 일일 상한이 엉뚱한 날에 걸린다.
+    """
     global _default_ledger
+    if isinstance(day, str):
+        day = date.fromisoformat(day)
     if _default_ledger is None or day is not None or db is not None:
         _default_ledger = Ledger(day=day or date.today(), db=db)
         _default_ledger.load_from_db()

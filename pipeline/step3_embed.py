@@ -77,7 +77,7 @@ def run(args) -> int:
         return EXIT_OK
 
     texts = [text_for(r) for r in rows]
-    ledger = cost.ledger(db=db)
+    ledger = cost.ledger(db=db, day=date)
     ledger.preflight(
         ROLE,
         in_tokens=sum(max(1, len(t) // 4) for t in texts) // max(1, len(texts)),

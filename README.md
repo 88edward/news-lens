@@ -21,11 +21,11 @@ GDELT 2.0 API ─┐
                ▼
         SQLite → SQL 덤프로 레포에 커밋
                ▼
-          GitHub Pages
+        Cloudflare Pages (정적)
 ```
 
-**필요한 계정은 두 곳이다.** GitHub(무료)과 Google AI Studio(무료 티어).
-GDELT·RSS는 인증이 없고, 저장소는 파일 하나이며, 배포는 레포가 곧 호스팅이다.
+**필요한 계정은 세 곳이고 전부 무료 티어다.** GitHub(크론) · Google AI Studio(LLM) ·
+Cloudflare(배포). GDELT·RSS는 인증이 없고, 저장소는 파일 하나다.
 
 **핵심 규칙: 기사 1건마다 LLM을 호출하지 않는다.** 임베딩으로 같은 사건을 묶은 뒤
 사건 단위로만 호출한다. 이 한 가지가 비용을 4~5배 가른다.
@@ -39,12 +39,22 @@ GDELT·RSS는 인증이 없고, 저장소는 파일 하나이며, 배포는 레�
 
 1. 이 레포를 자기 GitHub 계정으로 fork 하거나 push 한다.
 2. <https://aistudio.google.com/apikey> 에서 키를 받는다 (무료).
-3. 레포 Settings → Secrets and variables → Actions → New repository secret
-   → 이름 `GEMINI_API_KEY`, 값은 받은 키.
-4. 레포 Settings → Pages → Source 를 **GitHub Actions** 로 바꾼다.
-5. Actions 탭에서 순서대로 한 번씩 수동 실행한다:
+3. Cloudflare Pages 프로젝트를 한 번 만든다. 이름은 `news-lens`.
+
+   ```bash
+   npx wrangler pages project create news-lens --production-branch=main
+   ```
+
+   대시보드에서 만들어도 된다. **미리 만들어 두지 않으면** CI 는 대화형
+   프롬프트를 띄울 수 없어 그대로 실패한다.
+4. Cloudflare 대시보드에서 API 토큰을 발급한다
+   (권한: Account → Cloudflare Pages → Edit). 계정 ID 도 같이 복사한다.
+5. 레포 Settings → Secrets and variables → Actions → New repository secret
+   에 세 개를 등록한다:
+   `GEMINI_API_KEY` · `CLOUDFLARE_API_TOKEN` · `CLOUDFLARE_ACCOUNT_ID`
+6. Actions 탭에서 순서대로 한 번씩 수동 실행한다:
    `weights` → `collect` → `analyze`(job=submit) → `analyze`(job=publish)
-6. 이후로는 크론이 알아서 돈다.
+7. 이후로는 크론이 알아서 돈다.
 
 각 실행이 끝나면 `data/news-lens.sql` 에 새 커밋이 올라온다. 그게 파이프라인의
 상태다 — 러너는 매번 새로 뜨므로 이 파일이 없으면 다음 실행이 빈 DB로 시작한다.
@@ -207,7 +217,7 @@ python -m pipeline.step4_cluster --recluster --report
 | `weights.yml` | 일 18:00 / 월 03:00 | step0 국가 가중치 | 2~3분 |
 | `collect.yml` | `5 */6 * * *` | step1 수집 | 2~4분 |
 | `analyze.yml` (submit) | 15:10 / 00:10 | step2~5, 배치 제출 | 6~10분 |
-| `analyze.yml` (publish) | 19:10 / 04:10 | step6~9, Pages 배포 | 5~70분 |
+| `analyze.yml` (publish) | 19:10 / 04:10 | step6~9, Cloudflare Pages 배포 | 5~70분 |
 
 세 워크플로는 `news-lens-db` 라는 **같은 concurrency 그룹**을 쓴다.
 그룹 이름은 레포 전체에서 공유되므로, 셋이 동시에 돌아 DB 덤프를 서로
@@ -286,10 +296,12 @@ db-commit   →  news-lens.db  →  data/news-lens.sql  →  git push
 
 ### 시크릿
 
-**필수는 하나다.**
+**필수는 세 개다.**
 
 ```
-GEMINI_API_KEY      https://aistudio.google.com/apikey
+GEMINI_API_KEY          https://aistudio.google.com/apikey
+CLOUDFLARE_API_TOKEN    Cloudflare 대시보드 (권한: Cloudflare Pages → Edit)
+CLOUDFLARE_ACCOUNT_ID   대시보드 우측 사이드바 또는 URL 의 해시값
 ```
 
 나머지는 전부 선택이고, `config/models.yaml` 에서 해당 provider 를 켠
@@ -299,7 +311,6 @@ GEMINI_API_KEY      https://aistudio.google.com/apikey
 ANTHROPIC_API_KEY   event_analysis 를 Claude 로 바꿨을 때
 OPENAI_API_KEY      embedding 을 OpenAI 로 되돌렸을 때
 R2_*                원문 아카이브를 Cloudflare R2 에 둘 때
-CF_API_TOKEN        site/worker/ 의 검색 API 를 올릴 때
 ```
 
 ### 비용이 이상할 때
@@ -339,11 +350,11 @@ SELECT date, fips, weight, surge_raw FROM country_weights ORDER BY date DESC;
 | 국가 가중치 | GDELT `timelinesourcecountry` | 불필요 | $0 |
 | 스케줄러 | GitHub Actions (~1,100분) | GitHub | $0 |
 | 저장소 | SQLite → 레포 커밋 | 불필요 | $0 |
-| 정적 배포 | GitHub Pages | GitHub | $0 |
+| 정적 배포 | Cloudflare Pages | Cloudflare | $0 (요청 무제한) |
 | 임베딩 | `gemini-embedding-2` | Google | **무료 티어** |
 | 사건 분석 | `gemini-2.5-flash-lite` batch | Google | **무료 티어** |
 | 일일 종합 | `gemini-2.5-flash-lite` | Google | **무료 티어** |
-| **합계 (기본)** | | **2곳** | **$0 ~ $4** |
+| **합계 (기본)** | | **3곳** | **$0 ~ $4** |
 
 무료 티어 한도를 넘기면 유료로 전환되고, 그때 위 세 항목이 합쳐서 월 $4 수준이다.
 `config/pipeline.yaml` 의 `max_daily_cost_usd: 1.20` 이 상한을 강제한다 —
@@ -357,7 +368,8 @@ SELECT date, fips, weight, surge_raw FROM country_weights ORDER BY date DESC;
 ## 내 컴퓨터에는 무엇이 쌓이나
 
 **GitHub Actions 로 돌리는 경우 — 아무것도 쌓이지 않는다.** 러너는 GitHub 쪽에서
-뜨고 실행이 끝나면 사라진다. 내려받는 것은 `git pull` 할 때의 레포뿐이다.
+뜨고 실행이 끝나면 사라진다. 배포 산출물은 Cloudflare 로 바로 올라간다.
+내려받는 것은 `git pull` 할 때의 레포뿐이다.
 
 **로컬에서 돌리는 경우** 아래가 생긴다. 전부 `data/` 와 `site/dist/` 안이고,
 `data/news-lens.sql` 을 뺀 나머지는 gitignore 돼 있다.
@@ -426,8 +438,9 @@ llm/        ★ 벤더 SDK가 존재하는 유일한 곳. pipeline/ 은 registry
 weights/    ★ 국가 관심도 provider 인터페이스. pipeline/ 은 소스를 모른다
 pipeline/   파일명 번호 = 실행 순서. 각 step은 단독 실행 가능
 store/      schema.sql · db.py(SQLite) · dump.py(레포 커밋용 SQL 덤프) · blobs.py
-site/       templates(Jinja2) · static(globe.gl) · dist(gitignore)
+site/       templates(Jinja2) · static(globe.gl) · dist(gitignore, 배포 대상)
             worker/ 는 선택 — Cloudflare Workers 검색 API. 기본 구성에선 안 쓴다
+            dist 는 `pages deploy`, worker 는 `wrangler deploy`. 섞지 마라
 data/       news-lens.sql 만 커밋된다. 이게 파이프라인의 상태다
 tests/      fixtures 200건 + fake provider. 실제 API를 호출하지 않는다
 ```
